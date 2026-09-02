@@ -12,17 +12,34 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import audit
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
 from app.models.catalog import (
-    Attribute, Brand, Category, Collection, CollectionProduct, Product, Room,
+    Attribute,
+    Brand,
+    Category,
+    Collection,
+    CollectionProduct,
+    Product,
+    Room,
 )
 from app.schemas.catalog import (
-    AttributeCreate, AttributeOut, BrandCreate, BrandOut, CategoryCreate,
-    CategoryOut, CategoryTree, CategoryUpdate, CollectionCreate, CollectionOut,
-    RoomCreate, RoomOut,
+    AttributeCreate,
+    AttributeOut,
+    BrandCreate,
+    BrandOut,
+    CategoryCreate,
+    CategoryOut,
+    CategoryTree,
+    CategoryUpdate,
+    CollectionCreate,
+    CollectionOut,
+    RoomCreate,
+    RoomOut,
 )
 from app.schemas.common import Message
+from app.services import admin_supabase
 from app.services.catalog import unique_slug
 
 router = APIRouter(tags=["Admin · Taxonomy"])
@@ -46,6 +63,9 @@ async def list_categories(
     always needs the whole shape. Paginating it would only force the client
     to reassemble the tree itself.
     """
+    if settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.category_tree()
+
     rows = (await db.execute(select(Category).order_by(Category.position, Category.name))).scalars().all()
     counts = dict(
         (await db.execute(
@@ -176,7 +196,7 @@ _SIMPLE: tuple[tuple[str, Any, Any, Any, str], ...] = (
 
 def _register_simple(path: str, model, create_schema, out_schema, label: str) -> None:
     @router.get(f"/{path}", response_model=list[out_schema], name=f"list_{path}")
-    async def _list(  # noqa: ANN202
+    async def _list(
         include_inactive: bool = True,
         _: AdminPrincipal = Depends(require("taxonomy.read")),
         db: AsyncSession = Depends(get_db),
@@ -189,7 +209,7 @@ def _register_simple(path: str, model, create_schema, out_schema, label: str) ->
         return [out_schema.model_validate(row) for row in rows]
 
     @router.post(f"/{path}", response_model=out_schema, status_code=201, name=f"create_{path}")
-    async def _create(  # noqa: ANN202
+    async def _create(
         payload: create_schema,
         request: Request,
         principal: AdminPrincipal = Depends(require("taxonomy.write")),
@@ -209,7 +229,7 @@ def _register_simple(path: str, model, create_schema, out_schema, label: str) ->
         return out_schema.model_validate(row)
 
     @router.put(f"/{path}/{{row_id}}", response_model=out_schema, name=f"update_{path}")
-    async def _update(  # noqa: ANN202
+    async def _update(
         row_id: int,
         payload: create_schema,
         request: Request,
@@ -234,7 +254,7 @@ def _register_simple(path: str, model, create_schema, out_schema, label: str) ->
         return out_schema.model_validate(row)
 
     @router.delete(f"/{path}/{{row_id}}", response_model=Message, name=f"delete_{path}")
-    async def _delete(  # noqa: ANN202
+    async def _delete(
         row_id: int,
         request: Request,
         principal: AdminPrincipal = Depends(require("taxonomy.write")),
@@ -264,6 +284,9 @@ async def list_collections(
     _: AdminPrincipal = Depends(require("taxonomy.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.collections()
+
     rows = (
         await db.execute(select(Collection).order_by(Collection.position, Collection.name))
     ).scalars().all()
@@ -393,6 +416,9 @@ async def list_attributes(
     _: AdminPrincipal = Depends(require("taxonomy.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.attributes(kind)
+
     query = select(Attribute)
     if kind:
         query = query.where(Attribute.kind == kind)

@@ -4,13 +4,20 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import audit
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
-from app.models.catalog import Product, Review
+from app.models.catalog import Review
 from app.models.commerce import Coupon, ShippingRate
 from app.schemas.catalog import ReviewModeration, ReviewOut
-from app.schemas.commerce import CouponOut, CouponWrite, ShippingRateOut, ShippingRateWrite
+from app.schemas.commerce import (
+    CouponOut,
+    CouponWrite,
+    ShippingRateOut,
+    ShippingRateWrite,
+)
 from app.schemas.common import Message, Page
+from app.services import admin_supabase
 
 router = APIRouter(tags=["Admin · Marketing"])
 
@@ -23,6 +30,9 @@ async def list_coupons(
     _: AdminPrincipal = Depends(require("coupons.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.coupons()
+
     rows = (await db.execute(select(Coupon).order_by(Coupon.created_at.desc()))).scalars().all()
     return [CouponOut.model_validate(row) for row in rows]
 
@@ -112,6 +122,9 @@ async def list_rates(
     _: AdminPrincipal = Depends(require("coupons.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.shipping_rates()
+
     rows = (await db.execute(select(ShippingRate).order_by(ShippingRate.position))).scalars().all()
     return [ShippingRateOut.model_validate(row) for row in rows]
 
@@ -187,6 +200,12 @@ async def list_reviews(
     _: AdminPrincipal = Depends(require("reviews.moderate")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.reviews(
+            status=status_filter, product_id=product_id, rating=rating,
+            limit=limit, offset=offset,
+        )
+
     query = select(Review)
     count_query = select(func.count(Review.id))
     conditions = []

@@ -1,7 +1,14 @@
 """Pages, banners, homepage sections, settings and uploads."""
 import bleach
 from fastapi import (
-    APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status,
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,13 +18,23 @@ from app.core.config import settings as app_settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require, require_any
 from app.core.slug import slugify
-from app.models.content import Banner, HomepageSection, Page as PageModel, Setting
+from app.models.content import Banner, HomepageSection, Setting
+from app.models.content import Page as PageModel
 from app.providers.storage import UnsupportedFile, check_type, get_storage
 from app.schemas.common import Message
 from app.schemas.content import (
-    BannerOut, BannerWrite, HomepageSectionOut, HomepageSectionWrite, PageOut,
-    PageUpdate, PageWrite, SettingOut, SettingWrite, UploadOut,
+    BannerOut,
+    BannerWrite,
+    HomepageSectionOut,
+    HomepageSectionWrite,
+    PageOut,
+    PageUpdate,
+    PageWrite,
+    SettingOut,
+    SettingWrite,
+    UploadOut,
 )
+from app.services import admin_supabase
 
 router = APIRouter(tags=["Admin · Content"])
 
@@ -54,6 +71,9 @@ async def list_pages(
     _: AdminPrincipal = Depends(require("content.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if app_settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.pages()
+
     rows = (
         await db.execute(select(PageModel).order_by(PageModel.is_system.desc(), PageModel.title))
     ).scalars().all()
@@ -158,6 +178,9 @@ async def list_banners(
     _: AdminPrincipal = Depends(require("content.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if app_settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.banners(placement)
+
     query = select(Banner)
     if placement:
         query = query.where(Banner.placement == placement)
@@ -231,6 +254,9 @@ async def list_sections(
     _: AdminPrincipal = Depends(require("content.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if app_settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.homepage_sections()
+
     rows = (
         await db.execute(select(HomepageSection).order_by(HomepageSection.position))
     ).scalars().all()
@@ -278,6 +304,9 @@ async def list_settings(
     _: AdminPrincipal = Depends(require_any("settings.write", "content.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if app_settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.settings_rows()
+
     rows = (await db.execute(select(Setting).order_by(Setting.group, Setting.key))).scalars().all()
     return [SettingOut.model_validate(row) for row in rows]
 

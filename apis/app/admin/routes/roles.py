@@ -3,13 +3,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import audit, permissions as perms
+from app.core import audit
+from app.core import permissions as perms
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
 from app.core.slug import slugify
 from app.models.rbac import Role, StaffUser
 from app.schemas.common import Message
 from app.schemas.identity import RoleOut, RoleWrite
+from app.services import admin_supabase
 
 router = APIRouter(prefix="/roles", tags=["Admin · Roles"])
 
@@ -26,6 +29,9 @@ async def list_roles(
     _: AdminPrincipal = Depends(require("roles.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await admin_supabase.roles()
+
     counts = await _staff_counts(db)
     roles = (await db.execute(select(Role).order_by(Role.is_system.desc(), Role.name))).scalars().all()
     return [

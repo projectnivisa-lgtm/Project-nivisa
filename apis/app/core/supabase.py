@@ -78,7 +78,8 @@ def _headers(key: str) -> dict[str, str]:
     }
 
 
-async def _request(method: str, path: str, headers: dict[str, str] | None = None, **kwargs: Any) -> Any:
+async def _request(method: str, path: str, headers: dict[str, str] | None = None,
+                   want_headers: bool = False, **kwargs: Any) -> Any:
     base, key = _require_settings()
     url = f"{base}/rest/v1/{path.lstrip('/')}"
     merged = {**_headers(key), **(headers or {})}
@@ -99,6 +100,10 @@ async def _request(method: str, path: str, headers: dict[str, str] | None = None
             f"{method} {path} failed: HTTP {response.status_code} {response.text[:300]}",
             status=response.status_code,
         )
+
+    if want_headers:
+        body = response.json(parse_float=Decimal) if response.content else None
+        return body, response.headers
 
     if not response.content:
         return None
@@ -139,6 +144,42 @@ async def select(
 
     rows = await _request("GET", table, params=params)
     return rows or []
+
+
+async def select_page(
+    table: str,
+    *,
+    columns: str = "*",
+    order: str | None = None,
+    limit: int = 25,
+    offset: int = 0,
+    **filters: str,
+) -> tuple[list[dict[str, Any]], int]:
+    """A page of rows, and how many there are in total.
+
+    The total comes from `Prefer: count=exact`, which PostgREST returns in the
+    Content-Range header as `0-24/74`. Counting by fetching every row and
+    measuring the list would be wrong the moment a table outgrows a page, and
+    it is the sort of wrong that looks fine on a developer's seed data.
+    """
+    params: dict[str, str] = {"select": columns, **filters}
+    if order:
+        params["order"] = order
+    params["limit"] = str(limit)
+    params["offset"] = str(offset)
+
+    rows, headers = await _request(
+        "GET", table, params=params,
+        headers={"Prefer": "count=exact"}, want_headers=True,
+    )
+    total = 0
+    content_range = headers.get("content-range", "")
+    if "/" in content_range:
+        tail = content_range.rsplit("/", 1)[1]
+        # "*" when PostgREST declines to count; better to report 0 than to
+        # crash a screen over a header.
+        total = int(tail) if tail.isdigit() else 0
+    return rows or [], total
 
 
 async def select_one(table: str, **kwargs: Any) -> dict[str, Any] | None:

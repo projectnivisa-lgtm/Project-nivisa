@@ -3,14 +3,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import audit, permissions as perms
+from app.core import audit
+from app.core import permissions as perms
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
 from app.core.security import hash_password
 from app.models.rbac import Role, StaffUser
 from app.schemas.common import Message, Page
 from app.schemas.identity import (
-    RoleSummary, StaffCreate, StaffOut, StaffPasswordReset, StaffUpdate,
+    RoleSummary,
+    StaffCreate,
+    StaffOut,
+    StaffPasswordReset,
+    StaffUpdate,
 )
 
 router = APIRouter(prefix="/staff", tags=["Admin · Staff"])

@@ -8,9 +8,9 @@ from app.core import audit
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
 from app.models.commerce import Order
-from app.models.customer import Address, Customer
-from app.schemas.common import Message, Page
+from app.models.customer import Customer
 from app.schemas.commerce import OrderSummary
+from app.schemas.common import Message, Page
 from app.schemas.identity import AddressOut, CustomerAdminRow, CustomerOut
 
 router = APIRouter(prefix="/customers", tags=["Admin · Customers"])

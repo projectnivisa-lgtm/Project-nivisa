@@ -2,7 +2,14 @@
 from datetime import datetime, timezone
 
 from fastapi import (
-    APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status,
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
 )
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,12 +22,20 @@ from app.core.rbac import AdminPrincipal, require
 from app.models.ar import ArEvent, ProductArAsset
 from app.models.catalog import Product
 from app.providers.storage import (
-    UnsupportedFile, check_model, check_model_bytes, check_type, get_storage,
+    UnsupportedFile,
+    check_model,
+    check_model_bytes,
+    check_type,
+    get_storage,
 )
 from app.schemas.ar import (
-    ArAssetOut, ArAssetRow, ArAssetWrite, ArReportRow, ArValidationOut,
+    ArAssetOut,
+    ArAssetRow,
+    ArAssetWrite,
+    ArReportRow,
+    ArValidationOut,
 )
-from app.schemas.common import Message, Page
+from app.schemas.common import Page
 from app.services import ar as ar_service
 
 router = APIRouter(prefix="/ar", tags=["Admin · AR"])
