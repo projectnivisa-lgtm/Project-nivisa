@@ -33,6 +33,15 @@ venv/
 .pytest_cache/
 .ruff_cache/
 
+# ---- Client source material -------------------------------------------------
+# The photographs the client handed over, 20MB of them. Bunny is the store of
+# record - tools/import_client_assets.py uploaded all 139 and every URL is in
+# tools/client-assets-manifest.json, so the import is reproducible without
+# them. Kept out of a public repository, and out of a history that could not
+# drop them again afterwards. The originals stay on the machine that ran the
+# import.
+assets/
+
 # ---- Uploads ----------------------------------------------------------------
 # Only present with STORAGE_PROVIDER=local; on staging these live on Bunny.
 apis/media/
