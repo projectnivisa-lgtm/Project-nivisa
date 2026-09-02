@@ -9,13 +9,19 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.catalog import (
-    Collection, CollectionProduct, Product, Review, Room,
+    Collection,
+    CollectionProduct,
+    Product,
+    Review,
+    Room,
 )
-from app.models.content import Banner, HomepageSection, Page as PageModel, Setting
-from app.schemas.catalog import ProductCard, ReviewOut
+from app.models.content import Banner, HomepageSection, Setting
+from app.models.content import Page as PageModel
+from app.schemas.catalog import ReviewOut
 from app.schemas.common import Page
 from app.schemas.content import BannerOut, PageOut
 from app.services import catalog as catalog_service
+from app.services import content_supabase
 
 router = APIRouter(tags=["Shop · Content"])
 
@@ -31,6 +37,9 @@ async def store_profile(db: AsyncSession = Depends(get_db)):
     Only the public profile is exposed - the settings table also holds
     checkout and tax rules, which are nobody's business but the shop's.
     """
+    if settings.DATA_BACKEND == "supabase":
+        return await content_supabase.store_profile()
+
     from app.models.commerce import ShippingRate
 
     rows = {
@@ -70,6 +79,12 @@ async def store_profile(db: AsyncSession = Depends(get_db)):
 
 @router.get("/pages/{slug}", response_model=PageOut)
 async def get_page(slug: str, db: AsyncSession = Depends(get_db)):
+    if settings.DATA_BACKEND == "supabase":
+        page = await content_supabase.get_page(slug)
+        if page is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "That page does not exist.")
+        return PageOut.model_validate(page)
+
     row = (
         await db.execute(
             select(PageModel).where(PageModel.slug == slug, PageModel.is_published.is_(True))
