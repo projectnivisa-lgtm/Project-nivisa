@@ -162,6 +162,21 @@ async def insert(table: str, data: dict[str, Any]) -> dict[str, Any]:
     return rows[0]
 
 
+async def patch(table: str, data: dict[str, Any], **filters: str) -> list[dict[str, Any]]:
+    """Update rows matching the filters.
+
+    PostgREST refuses an UPDATE with no filter, which is a good default and
+    not one to work around: an unfiltered PATCH is every row in the table.
+    """
+    if not filters:
+        raise SupabaseError(f"PATCH {table} needs a filter; refusing to update every row")
+    rows = await _request(
+        "PATCH", table, params=filters, json=data,
+        headers={"Prefer": "return=representation"},
+    )
+    return rows or []
+
+
 async def rpc(function: str, payload: dict[str, Any] | None = None) -> Any:
     """Call a Postgres function.
 

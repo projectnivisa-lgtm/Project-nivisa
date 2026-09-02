@@ -22,10 +22,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import permissions as perms
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import ADMIN_AUDIENCE, CUSTOMER_AUDIENCE, decode_token
 from app.models.customer import Customer
 from app.models.rbac import StaffUser
+from app.services import admin_auth_supabase
 
 bearer = HTTPBearer(auto_error=False)
 optional_bearer = HTTPBearer(auto_error=False)
@@ -65,8 +67,12 @@ async def get_current_staff(
     except jwt.PyJWTError:
         raise _unauthorised("Invalid session.")
 
-    result = await db.execute(select(StaffUser).where(StaffUser.id == int(payload["sub"])))
-    user = result.scalars().first()
+    if settings.DATA_BACKEND == "supabase":
+        user = await admin_auth_supabase.find_by_id(int(payload["sub"]))
+    else:
+        result = await db.execute(select(StaffUser).where(StaffUser.id == int(payload["sub"])))
+        user = result.scalars().first()
+
     if user is None:
         raise _unauthorised("This account no longer exists.")
     if not user.is_active:

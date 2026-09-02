@@ -6,16 +6,27 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import audit, permissions as perms
+from app.core import audit
+from app.core import permissions as perms
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, get_current_staff
-from app.core.security import ADMIN_AUDIENCE, create_token, hash_password, verify_password
-from app.models.rbac import StaffUser
-from app.schemas.identity import (
-    AdminLogin, AdminLoginResponse, AdminMe, PasswordChange, RoleSummary,
+from app.core.security import (
+    ADMIN_AUDIENCE,
+    create_token,
+    hash_password,
+    verify_password,
 )
+from app.models.rbac import StaffUser
 from app.schemas.common import Message
+from app.schemas.identity import (
+    AdminLogin,
+    AdminLoginResponse,
+    AdminMe,
+    PasswordChange,
+    RoleSummary,
+)
+from app.services import admin_auth_supabase
 
 router = APIRouter(prefix="/auth", tags=["Admin · Auth"])
 
@@ -39,6 +50,30 @@ def _me(user: StaffUser) -> AdminMe:
 
 @router.post("/login", response_model=AdminLoginResponse)
 async def login(payload: AdminLogin, request: Request, db: AsyncSession = Depends(get_db)):
+    if settings.DATA_BACKEND == "supabase":
+        # The audit trail is deliberately absent on this path for now: it is a
+        # write to another table, and the admin screens this signs you into
+        # are not ported yet, so recording sign-ins that lead nowhere would
+        # fill the log with sessions that did nothing. It returns with the
+        # rest of the admin API.
+        user = await admin_auth_supabase.authenticate(payload.email, payload.password)
+        if user is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Email or password is incorrect.")
+        if not user.is_active:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated.")
+
+        user.last_login_at = await admin_auth_supabase.record_login(user.id)
+        return AdminLoginResponse(
+            access_token=create_token(
+                subject=str(user.id),
+                audience=ADMIN_AUDIENCE,
+                ttl_minutes=settings.ADMIN_TOKEN_TTL_MINUTES,
+                claims={"email": user.email, "role": user.role.slug},
+            ),
+            expires_in=settings.ADMIN_TOKEN_TTL_MINUTES * 60,
+            user=_me(user),
+        )
+
     result = await db.execute(select(StaffUser).where(StaffUser.email == payload.email.lower()))
     user = result.scalars().first()
 
