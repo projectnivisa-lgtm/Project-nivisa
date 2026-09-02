@@ -3,3 +3,9 @@ dist/
 *.tsbuildinfo
 .env
 .env.local
+
+# Read by `vite build` and carries no secret - just the API address, which
+# the browser sends on every request anyway. The root .gitignore excludes
+# .env.* to keep credentials out; this one has to ship or a production build
+# has no API to call.
+!.env.production
