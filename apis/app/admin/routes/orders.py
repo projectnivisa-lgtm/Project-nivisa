@@ -9,7 +9,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core import audit
+from app.core import audit, supabase
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require, require_any
 from app.models.commerce import FULFILMENT_FLOW, Order, OrderEvent
@@ -91,6 +92,14 @@ async def list_orders(
     _: AdminPrincipal = Depends(require("orders.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await supabase.rpc("nivisa_admin_orders", {
+            "p_q": q, "p_fulfilment": fulfilment_status, "p_payment": payment_status,
+            "p_date_from": date_from.isoformat() if date_from else None,
+            "p_date_to": date_to.isoformat() if date_to else None,
+            "p_limit": limit, "p_offset": offset,
+        })
+
     conditions = _filters(q, fulfilment_status, payment_status, date_from, date_to)
 
     base = select(Order).outerjoin(Customer, Customer.id == Order.customer_id)
@@ -103,7 +112,7 @@ async def list_orders(
     rows = (
         await db.execute(
             base.options(selectinload(Order.items))
-            .order_by(Order.created_at.desc()).limit(limit).offset(offset)
+            .order_by(Order.created_at.desc(), Order.id.desc()).limit(limit).offset(offset)
         )
     ).scalars().unique().all()
 

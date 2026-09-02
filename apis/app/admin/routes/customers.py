@@ -4,7 +4,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core import audit
+from app.core import audit, supabase
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
 from app.models.commerce import Order
@@ -33,6 +34,12 @@ async def list_customers(
     Cancelled orders are excluded from spend: money that was never taken is
     not revenue, and a "top customer" list built on it is misleading.
     """
+    if settings.DATA_BACKEND == "supabase":
+        return await supabase.rpc("nivisa_admin_customers", {
+            "p_q": q, "p_is_active": is_active,
+            "p_limit": limit, "p_offset": offset,
+        })
+
     stats = (
         select(
             Order.customer_id.label("customer_id"),
@@ -62,7 +69,13 @@ async def list_customers(
 
     total = await db.scalar(count_query) or 0
     rows = (
-        await db.execute(query.order_by(Customer.created_at.desc()).limit(limit).offset(offset))
+        # id as a tiebreak, not decoration: customers seeded together share a
+        # created_at, and an ORDER BY with ties is free to return them in any
+        # order. Across pages that means a row appearing twice or not at all.
+        await db.execute(
+            query.order_by(Customer.created_at.desc(), Customer.id.desc())
+            .limit(limit).offset(offset)
+        )
     ).all()
 
     return Page[CustomerAdminRow](
