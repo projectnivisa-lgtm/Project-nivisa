@@ -8,8 +8,20 @@
 
 function required(name: string, value: string | undefined): string {
   if (!value) {
+    // Two audiences, and the advice for one is useless to the other. This
+    // throws during `next build` as readily as at runtime, and a build server
+    // has no .env.local to copy to - the file is git-ignored, so it is never
+    // in the deployment's checkout by design. Told only to copy a file, the
+    // next person to read this in a Vercel log goes looking for one that
+    // cannot be there.
     throw new Error(
-      `Missing environment variable ${name}. Copy .env.example to .env.local.`,
+      `Missing environment variable ${name}.\n` +
+        `  Locally:  copy web/.env.example to web/.env.local and fill it in.\n` +
+        `  Deployed: set ${name} in the host's environment variables ` +
+        `(on Vercel: Project → Settings → Environment Variables), for every ` +
+        `environment you build - Production, Preview and Development are ` +
+        `separate lists there, and a variable set only for Production still ` +
+        `fails the preview build.`,
     );
   }
   return value.replace(/\/+$/, "");
