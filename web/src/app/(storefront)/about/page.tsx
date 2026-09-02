@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/listing/Breadcrumbs";
-import { loadPage } from "@/lib/contentSource";
+import { loadOptionalPage } from "@/lib/contentSource";
 import { Prose } from "@/components/content/Prose";
 
 export const metadata: Metadata = {
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
  * words rather than in a schema's.
  */
 export default async function AboutPage() {
-  const about = await loadPage("about-us");
+  const about = await loadOptionalPage("about-us");
 
   return (
     <div className="container-page py-8 lg:py-14">

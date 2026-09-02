@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/listing/Breadcrumbs";
-import { loadPage, loadStore } from "@/lib/contentSource";
+import { loadOptionalPage, loadStore } from "@/lib/contentSource";
 import { Prose } from "@/components/content/Prose";
 
 export const metadata: Metadata = {
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
  * customer calling nobody.
  */
 export default async function ContactPage() {
-  const [store, page] = await Promise.all([loadStore(), loadPage("contact")]);
+  const [store, page] = await Promise.all([loadStore(), loadOptionalPage("contact")]);
 
   const phones = store?.phone ? [store.phone] : [];
   const emails = store?.email ? [store.email] : [];
