@@ -338,7 +338,31 @@ Health touches nothing. Everything else opens a database session, so this
 split says the app booted and imported cleanly and the database is what it
 cannot reach — not the code, and not `.env` being absent.
 
-Before changing anything, establish which end is at fault. Run the same
+**Open `/api/v1/health/db` first.** It runs `SELECT 1` and reports what went
+wrong in the browser, which is the whole point: the 500s carry an `error_id`
+and nothing else, and looking that up needs log access whoever is deploying
+may not have. It names the exception, the host it dialled, and what that
+particular failure usually means:
+
+```json
+{
+  "database": "unreachable",
+  "error": "ConnectionRefusedError: [Errno 111] Connect call failed",
+  "hint": "Nothing is listening, or the host firewall blocks outbound 5432...",
+  "dialled": "aws-0-ap-northeast-2.pooler.supabase.com:5432",
+  "driver": "postgresql+asyncpg"
+}
+```
+
+`dialled` is often the whole diagnosis on its own - it is how you find out the
+box is running an older `.env` than the one you think you uploaded. The
+password is stripped from everything returned, and on `APP_ENV=production` the
+reason is withheld entirely, leaving only `{"database": "unreachable"}`.
+
+If it says `ok` while endpoints still 500, the connection is not the fault and
+the traceback in the log is the next stop.
+
+To confirm which end is at fault, run the same
 `DATABASE_URL` from a machine that is known to work:
 
 ```bash

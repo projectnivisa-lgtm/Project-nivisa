@@ -1,21 +1,25 @@
 """Nivisa Commerce API."""
 import logging
 import mimetypes
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.admin.router import admin_router
 from app.core.config import settings
+from app.core.database import engine
 from app.storefront.router import storefront_router
 
 logging.basicConfig(
@@ -62,6 +66,7 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
 
 def server_error_response(request: Request, exc: Exception) -> JSONResponse:
     """Everything unexpected: full detail to the log, a reference to the user.
@@ -175,7 +180,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 @app.get("/", include_in_schema=False, response_class=HTMLResponse)
-async def root() -> str:
+async def root(request: Request) -> str:
     """A human-readable root, in HTML.
 
     An API has nothing to say at `/`, and FastAPI's answer is a 404 in
@@ -192,7 +197,20 @@ async def root() -> str:
     the operation was performed and the application responds. Serving HTML
     here makes the comparison match, and gives whoever opens the bare domain
     somewhere to go instead of a raw 404 payload.
+
+    Every link below is built from `root_path`, not written as an absolute
+    path. This deployment is mounted at a sub-path - /nivisa - so a hardcoded
+    href="/api/v1/health" resolves against the DOMAIN and lands on the web
+    server's own 404, never reaching Python at all. The page then reads as a
+    dead API to the one person most likely to be opening it: whoever is
+    trying to work out why it is down. Mounted at the root, root_path is ""
+    and these are unchanged.
     """
+    # Trailing slashes stripped so the f-string below can join with a leading
+    # one and never produce "//api/v1/health", which some proxies redirect and
+    # others 404.
+    base = request.scope.get("root_path", "").rstrip("/")
+
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>{settings.APP_NAME}</title>
@@ -209,8 +227,10 @@ async def root() -> str:
   <h1>{settings.APP_NAME}</h1>
   <p>This is the API. There is no website here.</p>
   <ul>
-    <li><a href="/docs">API reference</a></li>
-    <li><a href="{settings.API_PREFIX}/health">Health check</a></li>
+    <li><a href="{base}/docs">API reference</a></li>
+    <li><a href="{base}{settings.API_PREFIX}/health">Health check</a></li>
+    <li><a href="{base}{settings.API_PREFIX}/health/db">Database check</a> &mdash; the
+        one to open when every endpoint but the health check is a 500</li>
   </ul>
   <p>The shop itself lives at <code>{settings.STOREFRONT_URL}</code>.</p>
 </body></html>"""
@@ -228,6 +248,112 @@ async def health():
             "email": settings.EMAIL_PROVIDER,
             "sms": settings.SMS_PROVIDER,
         },
+    }
+
+
+# Failures this has actually produced on a shared host, and what each one
+# means.
+#
+# Matched against the exception's CLASS NAME as well as its text, because the
+# text is not portable: a refused connection is "[Errno 111] Connect call
+# failed" on the Linux box this deploys to and "[WinError 1225] The remote
+# computer refused the network connection" on a developer's laptop, and
+# neither contains the tidy phrase you would think to search for. The class
+# name - ConnectionRefusedError - is the same on both, and `detail` below is
+# built to start with it.
+#
+# First match wins, so the specific entries precede the general ones.
+_DB_HINTS: list[tuple[tuple[str, ...], str]] = [
+    (("cannot assign requested address", "errno 99"),
+     ("The direct Supabase host is IPv6-only and this box has no IPv6 route. "
+      "Use the SESSION POOLER string from Supabase > Connect.")),
+    (("connectionrefused", "connection refused", "errno 111"),
+     ("Nothing is listening, or the host firewall blocks outbound 5432. Shared "
+      "cPanel plans commonly allow only 80/443 outbound - ask the host to open it.")),
+    (("timeout",),
+     ("The packets are going nowhere, which is a firewall dropping rather than "
+      "refusing them. Same fix as connection refused.")),
+    (("tenant", "enoidentifier"),
+     ("The pooler routes by the tenant encoded in the username: it must be "
+      "postgres.<project-ref>, not postgres.")),
+    (("password authentication failed", "invalidpassword"),
+     ("The password is wrong or was rotated. If it now contains @ : / ? # or a "
+      "space it must be percent-encoded, or the driver parses the host out of "
+      "the wrong half of the string.")),
+    (("psycopg2",),
+     ("DATABASE_URL is postgresql://, which selects SQLAlchemy's sync dialect. "
+      "It must be postgresql+asyncpg://.")),
+    (("does not exist", "invalidcatalogname"),
+     "Connected, but that database name is wrong. On Supabase it is postgres."),
+    (("name or service not known", "nodename nor servname", "getaddrinfo"),
+     ("The hostname does not resolve from this box. Check it for a typo, and "
+      "that the box has working DNS.")),
+    (("ssl", "certificate"),
+     ("TLS was refused. The pooler needs ?ssl=require - not sslmode=require, "
+      "which asyncpg does not read.")),
+]
+
+
+def _hint_for(detail: str) -> str | None:
+    lowered = detail.lower()
+    return next(
+        (hint for keys, hint in _DB_HINTS if any(k in lowered for k in keys)),
+        None,
+    )
+
+
+@app.get(f"{settings.API_PREFIX}/health/db", tags=["Health"])
+async def health_db(response: Response):
+    """Whether the database is actually reachable, and if not, why.
+
+    `/health` deliberately touches nothing, so it answers 200 on a box that
+    cannot reach Postgres at all - which is exactly the shape of the failure
+    that is hardest to diagnose: every real endpoint 500s while the health
+    check a monitor watches stays green.
+
+    The 500s those endpoints return carry an error id and nothing else, by
+    design: the message a customer sees must not include SQL or hostnames. On
+    a shared host that leaves whoever is deploying with an id and no way to
+    look it up, because reading the log needs SSH they may not have. This
+    endpoint is the way to see the cause in a browser.
+
+    The password is stripped from anything returned, and outside `staging` and
+    `local` the reason is withheld entirely - a production box should not
+    narrate its own connection settings to the internet.
+    """
+    started = time.perf_counter()
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001 - the point is to report anything
+        detail = f"{type(exc).__name__}: {exc}"
+
+        # The URL carries the password. Nothing derived from the exception is
+        # returned before this runs over it.
+        password = urlsplit(settings.DATABASE_URL).password
+        if password:
+            detail = detail.replace(password, "***")
+
+        logger.error("Database health check failed: %s", detail)
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        body: dict[str, object] = {"database": "unreachable"}
+
+        if settings.APP_ENV in ("staging", "local"):
+            target = urlsplit(settings.DATABASE_URL)
+            body |= {
+                "error": detail,
+                "hint": _hint_for(detail),
+                # Which host it DIALLED, which is how a stale .env is spotted:
+                # the answer here is the whole diagnosis when someone uploaded
+                # an older file than they think they did.
+                "dialled": f"{target.hostname}:{target.port or 5432}",
+                "driver": target.scheme,
+            }
+        return body
+
+    return {
+        "database": "ok",
+        "latency_ms": round((time.perf_counter() - started) * 1000, 1),
     }
 
 
