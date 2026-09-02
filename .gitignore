@@ -1,0 +1,45 @@
+# The three applications each carried their own git repo before this one was
+# made. Their histories were moved here rather than deleted; nothing in it
+# belongs in this repository. To recover one:
+#     mv .subrepo-git-backup/apis.git apis/.git
+.subrepo-git-backup/
+
+# ---- Secrets ---------------------------------------------------------------
+# Real credentials. The sub-directories ignore their own .env files too, but
+# this repository is public, so the rule is restated here where it is read.
+.env
+.env.*
+!.env.example
+
+# A deployment bundle of apis/, built by zipping the application root - which
+# means it contains a copy of apis/.env, live Supabase, SECRET_KEY and Bunny
+# credentials and all. .gitignore does not look inside an archive, so the .env
+# rule above does not cover it and the whole file has to be excluded. Rebuild
+# it when deploying; never commit one.
+*.zip
+
+# ---- Dependencies and build output ------------------------------------------
+node_modules/
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# ---- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# ---- Uploads ----------------------------------------------------------------
+# Only present with STORAGE_PROVIDER=local; on staging these live on Bunny.
+apis/media/
+
+# ---- Editors and OS ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

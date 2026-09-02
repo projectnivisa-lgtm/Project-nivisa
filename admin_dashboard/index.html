@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- A staff tool. Keep it out of search results entirely. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Roboto+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>Nivisa — Staff Dashboard</title>
+    <script>
+      // Applied before first paint, so a dark-theme user never sees a white
+      // flash while React boots.
+      try {
+        var saved = localStorage.getItem('nivisa.admin.theme');
+        document.documentElement.setAttribute(
+          'data-theme',
+          saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        );
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

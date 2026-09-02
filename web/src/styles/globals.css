@@ -1,0 +1,555 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   NIVISA DESIGN SYSTEM — v1
+   Warm contemporary interiors. Ivory ground, ink type, terracotta accent.
+
+   Layer 1 (primitives) : raw ramps. Components must NEVER reference these.
+   Layer 2 (semantic)   : the only names components may use.
+   Layer 3 (component)  : per-component vars, declared beside the component.
+
+   Hard rule: no component writes a hex value or a Layer-1 token.
+   ========================================================================== */
+
+@theme {
+  /* ---------------------------------------------------------------- LAYER 1
+     Primitives. A warm neutral ramp (yellow-leaning — never blue-grey), plus
+     chromatic ramps drawn from real material: fired clay, patinated
+     brass-green, madder-dyed cloth, aged brass. */
+
+  /* Limewash — the warm neutral. Every "grey" in this product is this ramp. */
+  --color-lime-50:  #FDFBF7;
+  --color-lime-100: #FBF8F3;
+  --color-lime-200: #F4EFE6;
+  --color-lime-300: #E9E1D3;
+  --color-lime-400: #D8CCB8;
+  --color-lime-500: #B9AA92;
+  --color-lime-600: #8C7F6C;
+  --color-lime-700: #5F574E;
+  --color-lime-800: #3A342E;
+  --color-lime-900: #1F1B17;
+  --color-lime-950: #14110E;
+
+  /* Clay — fired terracotta. The brand accent. */
+  --color-clay-50:  #FBF1ED;
+  --color-clay-100: #F6E2D9;
+  --color-clay-300: #DFA78F;
+  --color-clay-500: #B2503A;
+  --color-clay-600: #96412E;
+  --color-clay-700: #7C3423;
+
+  /* Verdigris — patinated green. Trust, availability, confirmation. */
+  --color-verd-50:  #EEF4F1;
+  --color-verd-100: #DDEAE4;
+  --color-verd-500: #2F5D4F;
+  --color-verd-600: #24493E;
+  --color-verd-700: #1B372F;
+
+  /* Madder — dyed cloth. Price reductions only. */
+  --color-madder-50:  #FCEFEE;
+  --color-madder-500: #9E2B25;
+  --color-madder-600: #85231E;
+
+  /* Ochre — aged brass. Warnings, low stock, pending states. */
+  --color-ochre-50:  #FBF3E2;
+  --color-ochre-500: #8A6116;
+  --color-ochre-600: #6F4E11;
+
+  /* ---------------------------------------------------------------- LAYER 2
+     Semantic tokens. Components use ONLY these.
+     Contrast ratios noted below are measured against --color-canvas. */
+
+  /* Surfaces */
+  --color-canvas:          var(--color-lime-100);  /* page ground */
+  --color-surface:         #FFFFFF;                /* cards, sheets, menus */
+  --color-surface-sunken:  var(--color-lime-200);  /* wells, image pads */
+  --color-surface-inverse: var(--color-lime-950);  /* footer, dark bands */
+
+  /* Type */
+  --color-ink:         var(--color-lime-950);      /* 17.8:1 — headings, prices */
+  --color-ink-muted:   var(--color-lime-700);      /*  6.7:1 — body, captions */
+  --color-ink-subtle:  var(--color-lime-600);      /*  3.7:1 — LARGE TEXT / icons only.
+                                                       Below 4.5:1: never use for body copy. */
+  --color-ink-inverse: var(--color-lime-100);
+
+  /* Lines.
+     `border` and `border-strong` are DECORATIVE — dividers, card edges, table
+     rules — and sit at 1.2:1 and 1.5:1 against the canvas by design: a hard
+     line between every card would fight the imagery.
+     `border-interactive` is the boundary of a control the customer must be
+     able to find (outline buttons, inputs, checkboxes, the quantity stepper).
+     It is a separate token because WCAG 1.4.11 requires 3:1 there, which the
+     decorative pair does not meet — 3.7:1 measured. Never substitute one for
+     the other. */
+  --color-border:             var(--color-lime-300);  /* 1.2:1 — decorative */
+  --color-border-strong:      var(--color-lime-400);  /* 1.5:1 — decorative */
+  --color-border-interactive: var(--color-lime-600);  /* 3.7:1 — control edges */
+  --color-border-focus:       var(--color-clay-500);
+
+  /* Actions. Primary is INK, not the accent — near-black buttons read as
+     premium retail, while a terracotta button on every card reads as a
+     discount store. The accent earns attention because it is rationed. */
+  --color-primary:         var(--color-lime-950);
+  --color-primary-hover:   var(--color-lime-800);
+  --color-on-primary:      var(--color-lime-100);
+  --color-secondary:       var(--color-verd-500);
+  --color-secondary-hover: var(--color-verd-600);
+  --color-on-secondary:    #FFFFFF;
+  --color-accent:          var(--color-clay-500);  /* 4.8:1 on canvas */
+  --color-accent-hover:    var(--color-clay-600);
+  --color-accent-soft:     var(--color-clay-100);
+  --color-on-accent:       #FFFFFF;
+
+  /* Status */
+  --color-success:          var(--color-verd-500);
+  --color-success-soft:     var(--color-verd-50);
+  --color-warning:          var(--color-ochre-500);
+  --color-warning-soft:     var(--color-ochre-50);
+  --color-destructive:      #B42318;
+  --color-destructive-soft: #FDECEA;
+  --color-sale:             var(--color-madder-500);  /* discount % + was-price */
+  --color-sale-soft:        var(--color-madder-50);
+
+  /* ------------------------------------------------------------ TYPOGRAPHY
+     Fraunces (variable: opsz / SOFT / WONK) gives headings warmth and a
+     slight hand-cut wonk at display sizes — it reads crafted rather than
+     corporate, which Playfair no longer does. Instrument Sans handles every
+     number, price, form and table: tall x-height, unambiguous 1/7/9, real
+     tabular figures. Deliberately NOT Inter — Inter is the default that makes
+     AI-built sites look alike, and its figures are wider at the same size. */
+  --font-display: var(--font-fraunces), "Iowan Old Style", Georgia, serif;
+  --font-sans:    var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+
+  /* Type scale — 1.200 minor third at text sizes, opening to 1.250 at display
+     sizes. Body never below 15px; captions never below 13px. */
+  --text-2xs:  0.8125rem;  /* 13 — legal, table meta */
+  --text-xs:   0.875rem;   /* 14 — labels, badges */
+  --text-sm:   0.9375rem;  /* 15 — dense body, admin tables */
+  --text-base: 1rem;       /* 16 — body */
+  --text-lg:   1.125rem;   /* 18 — lead paragraph */
+  --text-xl:   1.375rem;   /* 22 — card titles */
+  --text-2xl:  1.75rem;    /* 28 — section heads */
+  --text-3xl:  2.25rem;    /* 36 — page titles */
+  --text-4xl:  3rem;       /* 48 — hero (mobile) */
+  --text-5xl:  4rem;       /* 64 — hero (desktop) */
+  --text-6xl:  5.25rem;    /* 84 — campaign statement */
+
+  --leading-tight:   1.08;   /* display only */
+  --leading-snug:    1.25;
+  --leading-normal:  1.5;    /* body minimum */
+  --leading-relaxed: 1.65;   /* long-form editorial */
+
+  /* --------------------------------------------------------------- SPACING
+     4px base. Editorial sections breathe; dense surfaces (filters, tables,
+     checkout) use the low end of the same scale, so the two halves of the
+     product stay dimensionally related. */
+  --spacing: 0.25rem;
+  --space-section-sm: 3.5rem;   /* 56 — mobile section rhythm */
+  --space-section:    6rem;     /* 96 — tablet */
+  --space-section-lg: 8.5rem;   /* 136 — desktop editorial */
+  --space-gutter:     1.25rem;  /* 20 — mobile page gutter */
+  --space-gutter-lg:  2.5rem;   /* 40 — desktop page gutter */
+
+  /* ---------------------------------------------------------------- RADIUS
+     Restrained. Furniture is rectilinear; pill-shaped everything is the tell
+     of a template. Images and cards get 2px, controls 4px, and only genuinely
+     round things (avatars, colour swatches) go full. */
+  --radius-xs:   2px;
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --radius-full: 9999px;
+
+  /* --------------------------------------------------------------- SHADOWS
+     Warm-tinted, never neutral black — a grey shadow on an ivory ground reads
+     as dirt. Used sparingly: elevation here is mostly carried by borders. */
+  --shadow-raise: 0 1px 2px rgb(31 27 23 / 0.05), 0 1px 1px rgb(31 27 23 / 0.04);
+  --shadow-card:  0 2px 8px rgb(31 27 23 / 0.06), 0 1px 2px rgb(31 27 23 / 0.04);
+  --shadow-pop:   0 8px 28px rgb(31 27 23 / 0.10), 0 2px 6px rgb(31 27 23 / 0.05);
+  --shadow-sheet: 0 -4px 32px rgb(31 27 23 / 0.12);
+
+  /* ---------------------------------------------------------------- MOTION
+     Two durations, two curves, total. Anything that needs a third is probably
+     an animation that should not exist. */
+  --ease-out-soft:    cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 160ms;   /* hover, focus, toggles */
+  --duration-slow: 280ms;   /* drawers, sheets, image swaps */
+
+  /* --------------------------------------------------------------- LAYOUT */
+  --container-page:  1440px;  /* max content width */
+  --container-prose: 68ch;    /* editorial measure */
+
+  /* Chrome that floats over the page, and therefore has to be reserved for.
+     Each is the element's own content box PLUS its border — a sticky bar is
+     as tall as its rule, and rounding it away puts a hairline of content
+     underneath. The bottom navigation additionally carries the home-indicator
+     inset, which is 0 in a desktop browser and 34px on most iPhones: a flat
+     `pb-14` looks correct in every viewport you can emulate and covers the
+     last line of the page on real hardware.
+     The header is one row on mobile and two from `lg` up, so its height is
+     spelled out row by row rather than rounded: utility row, the rule under
+     it, the navigation row, and the header's own bottom border. Reading 80
+     and forgetting the 48px nav row puts anchor targets under half the
+     header on every desktop. */
+  --space-header:     calc(4rem + 1px);                   /*  65 — h-16 + border-b */
+  --space-header-lg:  calc(5rem + 1px + 3rem + 1px);      /* 130 — lg:h-20 + border-t + h-12 + border-b */
+  --space-bottom-nav: calc(3.5rem + 1px + env(safe-area-inset-bottom));
+
+  /* Where a `position: sticky` element parks. Derived from the header rather
+     than guessed: `top-28` (112px) was 18px short of the two-row desktop
+     header, so the cart summary and the product buy panel both docked
+     *underneath* it — the first line of each was covered the moment it stuck.
+     The extra 1rem keeps a panel from sitting flush against the rule. */
+  --space-sticky-top: calc(var(--space-header-lg) + 1rem);
+
+  /* Page shell padding — the frame around a whole page's content, as distinct
+     from the rhythm between bands of the homepage. Two values, used by every
+     storefront page, so a shell cannot drift the way the homepage bands did.
+     Like the section rhythm, the desktop value answers to viewport height. */
+  --space-page:    2rem;   /* 32 — page shell, mobile */
+  --space-page-lg: 3rem;   /* 48 — page shell, desktop */
+
+  /* The gap between the five blocks of the product buy panel — price, stock,
+     upholstery, quantity, buttons. A variable rather than a `space-y-6`
+     literal so a short viewport can close it up: Tailwind's `space-y-*`
+     selector carries more specificity than a sensible override could, so the
+     value has to be the thing that changes, not the rule. */
+  --buy-stack-gap: 1.5rem;  /* 24 */
+}
+
+/* ==========================================================================
+   SECTION RHYTHM vs VIEWPORT HEIGHT
+
+   The rhythm answers to how tall the screen is, not only how wide.
+
+   96px above and below is right on a tall display. On a 1536x700 laptop —
+   one of the most common desktop viewports there is — the pair costs 192px,
+   and with 201px of banner and header above it the hero's own buttons were
+   sliced by the fold: 26px of "Shop all furniture" sat below the screen on
+   first paint. A visitor's first impression was a headline with no way to act
+   on it. Width-based breakpoints cannot see that, because the window is wide.
+
+   Keyed to height AND a desktop width on purpose. A phone's viewport height
+   changes as the URL bar hides, so keying padding to it there would reflow
+   the whole page mid-scroll; mobile keeps the flat `--space-section-sm`.
+
+   Steps, not a clamp(): the rhythm stays a round number that the spacing
+   scale can actually land on, and a section's padding never disagrees with
+   the gaps inside it by a fractional pixel.
+   ========================================================================== */
+
+@media (width >= 64rem) and (height <= 56.25rem) {
+  :root {
+    --space-section: 4.5rem;  /* 72 — laptop */
+    --space-page-lg: 2rem;    /* 32 */
+  }
+}
+
+@media (width >= 64rem) and (height <= 45rem) {
+  :root {
+    --space-section: 3rem;    /* 48 — short laptop, netbook, split screen */
+    --space-page-lg: 1.5rem;  /* 24 */
+  }
+}
+
+/* The buy panel's five blocks sit 24px apart, which is 96px of gap stacked
+   above the button that matters. 16px still reads as five separate groups. */
+@media (width >= 64rem) and (height <= 54rem) {
+  :root {
+    --buy-stack-gap: 1rem;  /* 16 */
+  }
+}
+
+/* ==========================================================================
+   HERO ON A SHORT VIEWPORT
+
+   Section padding alone cannot save the hero on a short screen. Above it sit
+   72px of banners and a 130px two-row header, leaving 499px on a 700px
+   viewport; the text column alone is 570px, so the trust row was 127px below
+   the fold and the illustration was clipped by 101px.
+
+   The threshold is 864px, not 720: at the tightened section rhythm the hero's
+   text column still ends at 843px, so every viewport shorter than about 860
+   clips it. 1366x768 and 1536x800 are two of the most common laptop viewports
+   in existence and both sit in that gap — a 720px threshold would have looked
+   fixed on the one screen it was tested against and left the majority of real
+   laptops still cutting the trust row.
+
+   So on a short desktop viewport the hero drops one step down the type scale
+   (--text-5xl to --text-4xl, both already the hero's own sizes — this is the
+   mobile hero size, not a new one) and tightens its internal rhythm. The
+   illustration takes its height from the text column beside it rather than
+   setting the section height itself, so it can never be the reason the hero
+   overflows.
+
+   Nothing is hidden. The whole proposition — headline, lede, both calls to
+   action, and the three trust figures — stays on the first screen, which is
+   the entire point of a hero.
+   ========================================================================== */
+
+@media (width >= 64rem) and (height <= 54rem) {
+  .hero-compact h1 {
+    font-size: var(--text-4xl);
+    margin-top: 0.75rem;
+  }
+
+  .hero-compact .hero-lede {
+    font-size: var(--text-base);
+    margin-top: 1rem;
+  }
+
+  .hero-compact .hero-actions {
+    margin-top: 1.5rem;
+  }
+
+  .hero-compact .hero-stats {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+  }
+
+  /* Product page: the same problem as the hero, on the page where it costs
+     the most. "Add to cart" sat 51px below the fold on a 700px screen, so the
+     store's most important button was invisible until the customer scrolled —
+     and the sticky bar that would have carried it does not appear until the
+     buy panel has already left the viewport.
+
+     The buy panel's header is what gives the ground back: one step down for
+     the product name, and the gaps between name, summary, rating and the
+     panel tightened. Nothing is dropped. */
+  /* The product page keeps its own tight shell — this strip holds
+     breadcrumbs, not a page frame, and is meant to sit close under the
+     header — so it tightens on its own terms rather than joining
+     `--space-page-lg`. */
+  .buy-compact {
+    padding-block: 1.25rem;
+  }
+
+  .buy-compact h1 {
+    font-size: var(--text-3xl);
+  }
+
+  .buy-compact .buy-summary {
+    font-size: var(--text-base);
+    margin-top: 0.5rem;
+  }
+
+  .buy-compact .buy-meta {
+    margin-top: 0.5rem;
+  }
+
+  .buy-compact .buy-grid {
+    margin-top: 1rem;
+  }
+
+  .buy-compact .buy-panel {
+    margin-top: 1.25rem;
+  }
+
+
+  /* Cart: same story, one step further down the funnel. "Checkout" sat 50px
+     below the fold with two items in the basket, on the one page whose only
+     job is to get pressed. The summary card keeps every row — subtotal,
+     savings, delivery, total and the coupon field — and gives up padding
+     instead. */
+  .cart-compact h1 {
+    font-size: var(--text-3xl);
+  }
+
+  .cart-compact .cart-grid {
+    margin-top: 1.5rem;
+  }
+
+  .cart-compact .cart-summary-card {
+    padding: 1.25rem;
+  }
+
+  .cart-compact .cart-coupon {
+    margin-top: 1rem;
+  }
+
+  .cart-compact .cart-totals {
+    margin-top: 1rem;
+  }
+
+  .cart-compact .cart-checkout {
+    margin-top: 1rem;
+  }
+}
+
+/* ==========================================================================
+   BASE
+   ========================================================================== */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Prices, quantities, order numbers and every admin table cell must align
+     digit-for-digit down a column. */
+  .tabular,
+  input[type="number"],
+  td[data-numeric],
+  [data-price] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    line-height: var(--leading-tight);
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  p { text-wrap: pretty; }
+
+  /* One focus treatment across the whole product, storefront and admin.
+     Never removed — only restyled. */
+  :focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Reserve space for every image so grids never reflow on load. */
+  img,
+  video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Anchor jumps must clear the sticky header.
+     Without this, every in-page link lands its target at y=0 — underneath the
+     header — so `#reviews-heading` scrolled the word "Reviews" completely out
+     of sight, and the skip link put `#main` behind the very chrome it exists
+     to skip. Applied to `[id]` rather than `:target` because most jumps here
+     come from `scrollIntoView()`, which never sets a hash and so never
+     matches `:target`.
+
+     The extra 1rem is deliberate: a heading flush against the header reads as
+     clipped even when it is fully visible. */
+  [id] {
+    scroll-margin-top: calc(var(--space-header) + 1rem);
+  }
+
+  @media (width >= 64rem) {
+    [id] {
+      scroll-margin-top: calc(var(--space-header-lg) + 1rem);
+    }
+  }
+}
+
+/* ==========================================================================
+   REDUCED MOTION
+   Honoured globally rather than per component, so a newly added animation
+   cannot forget to opt in.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   UTILITIES
+   ========================================================================== */
+
+@utility container-page {
+  width: 100%;
+  max-width: var(--container-page);
+  margin-inline: auto;
+  padding-inline: var(--space-gutter);
+  @media (width >= 1024px) {
+    padding-inline: var(--space-gutter-lg);
+  }
+}
+
+/* Horizontal rails: category chips, product carousels, room scenes. */
+@utility rail {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  & > * {
+    scroll-snap-align: start;
+    flex: none;
+  }
+}
+
+/* Skeleton shimmer. Warm and low contrast — a loading state must not
+   out-shout the content it stands in for. */
+@utility skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-lime-200) 0%,
+    var(--color-lime-300) 40%,
+    var(--color-lime-200) 80%
+  );
+  background-size: 300% 100%;
+  animation: nivisa-shimmer 1.4s var(--ease-in-out-soft) infinite;
+}
+
+@keyframes nivisa-shimmer {
+  from { background-position: 150% 0; }
+  to   { background-position: -50% 0; }
+}
+
+/* Screen-reader-only text that becomes visible on focus (skip links). */
+@utility sr-focusable {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  &:focus {
+    position: fixed;
+    top: var(--space-gutter);
+    left: var(--space-gutter);
+    width: auto;
+    height: auto;
+    padding: 0.75rem 1.25rem;
+    margin: 0;
+    clip-path: none;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-pop);
+    z-index: 80;
+  }
+}

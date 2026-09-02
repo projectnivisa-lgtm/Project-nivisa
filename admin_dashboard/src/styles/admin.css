@@ -1,0 +1,1722 @@
+/* Staff dashboard.
+ *
+ * This is an internal tool, so it is not held to the senior-friendly
+ * constraints the shop is: data density is a feature here, and a clerk
+ * processing forty orders wants to see forty rows, not four.
+ *
+ * It still uses the shared tokens — same palette, same type family — so the
+ * two apps look like they come from the same organisation, and it still
+ * follows the ordinary rules: visible focus, labelled controls, contrast that
+ * clears AA, and no colour-only signalling. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  /* Gentelella Light Theme */
+  --dashboard-bg: #f4f6f9;
+  --sidebar-bg: #2C0C16; /* Premium Oxblood/Wine dark */
+  --sidebar-text: #dcc8cb;
+  --sidebar-text-hover: #ffffff;
+  --sidebar-active-bg: #411322;
+  --sidebar-active-border: #b3103c;
+  --header-bg: #ffffff;
+  --header-text: #374151;
+  --card-bg: #ffffff;
+  --card-border: #e5e7eb;
+  --text-main: #1f2937;
+  --text-muted: #6b7280;
+  
+  --accent-green: #10b981;
+  --accent-purple: #8b5cf6;
+  --accent-orange: #f59e0b;
+  --accent-blue: #3b82f6;
+  --accent-red: #ef4444;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+  /* --- Shop Integration CSS variables --- */
+  --nk-color-paper-raised: #ffffff;
+  --nk-color-paper-sunken: #f4f6f9;
+  --nk-color-paper-line: #e5e7eb;
+  --nk-color-ink-muted: #6b7280;
+  --nk-color-oxblood: #d31225;
+  --nk-radius-lg: 12px;
+  --nk-radius-sm: 4px;
+  --nk-z-dialog: 1000;
+  
+  --nk-font-body: 'Inter', sans-serif;
+  --nk-font-display: 'Inter', sans-serif;
+  --nk-font-mono: 'Roboto Mono', monospace;
+  
+  --nk-font-size-sm: 0.8125rem;
+  --nk-font-size-lg: 1.125rem;
+
+  --nk-space-1: 4px;
+  --nk-space-2: 8px;
+  --nk-space-3: 12px;
+  --nk-space-4: 16px;
+  --nk-space-6: 24px;
+  --nk-space-8: 32px;
+}
+
+[data-theme='dark'] {
+  /* Gentelella Dark Theme */
+  --dashboard-bg: #111827;
+  --sidebar-bg: #20040c;
+  --sidebar-text: #cbbabc;
+  --sidebar-text-hover: #ffffff;
+  --sidebar-active-bg: #350815;
+  --sidebar-active-border: #b3103c;
+  --header-bg: #1f2937;
+  --header-text: #f9fafb;
+  --card-bg: #1f2937;
+  --card-border: #374151;
+  --text-main: #f9fafb;
+  --text-muted: #9ca3af;
+
+  /* --- Shop Integration CSS variables ---
+     These were never redefined for dark mode, so any element using them (e.g.
+     the Reports page's sidebar hover state) fell back to their light-mode
+     values - a near-white box with near-white text on hover, invisible until
+     you already knew it was there. */
+  --nk-color-paper-raised: #1f2937;
+  --nk-color-paper-sunken: #2b3648;
+  --nk-color-paper-line: #374151;
+  --nk-color-ink-muted: #9ca3af;
+}
+
+/* Overriding old tokens with new ones for compatibility if needed */
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--dashboard-bg);
+  color: var(--text-main);
+  font-family: var(--nk-font-body, 'Inter', sans-serif);
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.5;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+
+
+:focus-visible {
+  outline: 3px solid var(--nk-color-oxblood);
+  outline-offset: 2px;
+}
+
+.nk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+/* ---------- Shell ---------- */
+
+.a-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--dashboard-bg);
+}
+
+.a-side {
+  width: 240px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.a-side__brand {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--nk-space-4);
+  font-family: var(--nk-font-display, 'Inter');
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.a-side__brand small {
+  margin-left: 8px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--accent-green);
+  text-transform: uppercase;
+}
+
+.a-side__nav {
+  padding: var(--nk-space-4) 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.a-side__link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  color: var(--sidebar-text);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border-left: 4px solid transparent;
+}
+
+.a-side__link:hover {
+  color: var(--sidebar-text-hover);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.a-side__link--active {
+  background: var(--sidebar-active-bg);
+  border-left-color: var(--sidebar-active-border);
+  color: #fff;
+}
+
+.a-side__foot {
+  padding: var(--nk-space-4);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.8125rem;
+  color: var(--sidebar-text);
+}
+
+.a-side__role {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.7rem;
+}
+
+.a-side__signout {
+  margin-top: 12px;
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--sidebar-text-hover);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.a-side__signout:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.a-content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.a-topbar {
+  height: 60px;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  color: var(--header-text);
+}
+
+.a-main {
+  flex: 1;
+  padding: 0 32px 24px 32px;
+  overflow-y: auto;
+}
+
+.a-main > *:first-child {
+  margin-top: 24px;
+}
+
+/* Several admin forms (book editor, order edit, About Us editor) laid out
+   paired fields with an inline `gridTemplateColumns: '1fr 1fr'` style — inline
+   styles can't carry a media query, so the second column ran off the edge of
+   every dialog on phones instead of stacking. This class replaces those
+   inline column declarations; each usage keeps its own inline gap/margin. */
+.a-form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+/* Plain <input>/<select>/<textarea> default to their intrinsic (content)
+   width, not their grid column's width - left them stranded in the left
+   half of each column with a huge gap before the next column. Force them
+   to fill whatever column they're placed in. */
+.a-form-grid-2 > div > input,
+.a-form-grid-2 > div > select,
+.a-form-grid-2 > div > textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 600px) {
+  .a-form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* BookPickerModal's filter row: was an inline repeat(auto-fit, minmax(170px,
+   1fr)) inside a column-flex dialog. auto-fit's column count is resolved
+   against the grid's own box, but that box's width comes from flex stretch —
+   a circular dependency browsers don't always re-resolve, so it kept
+   rendering 2 columns (352px+ min-content) inside a ~312px dialog on phones.
+   Fixed 2-then-1 column tracks (matching .a-form-grid-2's pattern) sidestep
+   auto-fit's resolution entirely instead of relying on it to shrink right. */
+.a-picker-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 700px) {
+  .a-picker-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Responsive shell (drawer sidebar below ~900px) ---------- */
+
+.a-overlay {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .a-side {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    width: min(280px, 85vw);
+  }
+
+  .a-side--open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  }
+
+  .a-side__close-btn {
+    display: flex !important;
+  }
+
+  .a-menu-btn {
+    display: flex !important;
+  }
+
+  .a-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 999;
+  }
+
+  .a-topbar__search {
+    display: none !important;
+  }
+
+  .a-topbar {
+    padding: 0 16px;
+  }
+
+  .a-main {
+    padding: 0 16px 24px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .a-topbar__search {
+    display: none !important;
+  }
+}
+
+.a-h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 4px 0;
+  border-bottom: none;
+  letter-spacing: -0.02em;
+}
+
+.a-h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+}
+
+.a-sub {
+  margin: 0 0 20px 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Fulfilment queue tabs (Orders page) */
+.a-fulfilment-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.a-fulfilment-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.a-fulfilment-tab:hover {
+  color: var(--text-main);
+}
+
+.a-fulfilment-tab--active {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+}
+
+.a-fulfilment-tab__count {
+  background: var(--dashboard-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.a-fulfilment-tab--active .a-fulfilment-tab__count {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.a-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--dashboard-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+}
+
+.a-bulk-bar__count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Explains the gap between a date-filtered list and the queue's true badge
+   count, which deliberately does not follow the filter. */
+.a-range-note {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--card-border);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: 8px;
+  background: var(--dashboard-bg);
+  font-size: 0.83rem;
+  color: var(--text-muted);
+}
+
+.a-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--accent-blue);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Card Container for Tables */
+.a-table-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+  overflow: hidden;
+  margin-top: 16px;
+}
+
+.a-table-card__header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--card-bg);
+}
+
+/* One labelled control (From: / To: / Range: / Show:). */
+.a-filter-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.a-filter-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Search absorbs the slack so the filters keep their natural widths instead of
+   being pushed onto a second row by a fixed-width search box. */
+.a-table-card__header > input[type='search'] {
+  flex: 1 1 240px;
+  min-width: 180px;
+}
+
+/* From/To/Range are one filter in three controls - keep them together so
+   "Range" can never end up stranded alone on its own line. */
+.a-filter-dates {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.a-filter-show {
+  margin-left: auto;
+}
+
+/* Below this the toolbar cannot hold search + all three date controls on one
+   line, so give each group a full row rather than letting them break at
+   arbitrary points. */
+@media (max-width: 1100px) {
+  .a-table-card__header > input[type='search'] { flex-basis: 100%; }
+  .a-filter-dates { width: 100%; }
+  .a-filter-show { margin-left: 0; }
+}
+
+@media (max-width: 620px) {
+  .a-table-card__header > select { width: 100%; }
+  .a-filter-field { width: 100%; }
+  /* Grow into the row rather than width:100%, which fights the label for space
+     and collapses a date input to its intrinsic minimum (min-width:0 lets it
+     shrink instead of overflowing the viewport). */
+  .a-filter-field > input,
+  .a-filter-field > select {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .a-filter-dates { gap: 8px; }
+  .a-filter-label { flex: 0 0 46px; }
+}
+
+.a-table-card__footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card-bg);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.a-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 24px;
+}
+
+/* ---------- Tables ---------- */
+
+.a-table-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.a-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 760px;
+  color: var(--text-main);
+}
+
+.a-table th,
+.a-table td {
+  padding: 14px 20px;
+  text-align: left;
+  border-bottom: 1px solid var(--card-border);
+  vertical-align: middle;
+  font-size: 0.875rem;
+}
+
+.a-table th {
+  background: var(--dashboard-bg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.a-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.a-table tbody tr:hover {
+  background: rgba(16, 185, 129, 0.03);
+}
+
+.a-table tr:last-child td {
+  border-bottom: none;
+}
+
+.a-num {
+  font-family: var(--nk-font-mono, monospace);
+  text-align: right;
+}
+
+/* ---------- Badges ---------- */
+
+.a-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.a-badge--ok { background: rgba(16, 185, 129, 0.12); color: #059669; border: 1px solid rgba(16, 185, 129, 0.25); }
+.a-badge--warn { background: rgba(239, 68, 68, 0.12); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.25); }
+.a-badge--info { background: rgba(59, 130, 246, 0.12); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.25); }
+.a-badge--amber { background: rgba(245, 158, 11, 0.12); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.25); }
+.a-badge--purple { background: rgba(139, 92, 246, 0.12); color: #7c3aed; border: 1px solid rgba(139, 92, 246, 0.25); }
+.a-badge--ghost { background: rgba(107, 114, 128, 0.1); color: var(--text-muted); border: 1px solid var(--card-border); }
+
+/* ---------- Forms and buttons ---------- */
+
+.a-input,
+.a-select {
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--text-main);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  min-height: 40px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.a-input:focus, .a-select:focus {
+  border-color: var(--accent-green);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+.a-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  min-height: 40px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.a-btn:active:not(:disabled) { transform: translateY(1px); }
+
+.a-btn--primary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+}
+.a-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.a-btn--ghost {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+  color: var(--text-main);
+}
+.a-btn--ghost:hover:not(:disabled) {
+  background: var(--dashboard-bg);
+  border-color: #d1d5db;
+  color: var(--text-main);
+}
+
+.a-btn--danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+}
+.a-btn--danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+.a-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.a-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.a-error {
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #dc2626;
+  margin-bottom: 16px;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.a-note {
+  color: var(--nk-color-ink-muted);
+  padding: var(--nk-space-8) var(--nk-space-6);
+  text-align: center;
+  font-size: var(--nk-font-size-sm);
+}
+
+/* A page-level empty state (not nested in an already-bordered card, e.g. a
+   route with nothing built yet) gets its own dashed frame instead of sitting
+   bare on the page background. */
+.a-note--framed {
+  background: var(--nk-color-paper-raised);
+  border: 1px dashed var(--nk-color-paper-line);
+  border-radius: var(--nk-radius-lg);
+}
+
+/* ---------- Confirm dialog ---------- */
+
+.a-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(43, 38, 34, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--nk-space-4);
+  z-index: var(--nk-z-dialog);
+}
+
+.a-dialog {
+  position: relative;
+  background: var(--nk-color-paper-raised);
+  border-radius: var(--nk-radius-lg);
+  padding: var(--nk-space-6);
+  max-width: 460px;
+  width: 100%;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* Every dialog gets one of these, top-right, regardless of how its own header
+   is laid out — closing shouldn't require scrolling down to a Cancel button. */
+.a-dialog__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  z-index: 1;
+}
+
+.a-dialog__close:hover {
+  background: rgba(107, 114, 128, 0.14);
+  color: var(--text-main);
+}
+
+.a-dialog h2 {
+  margin: 0 0 var(--nk-space-3);
+  padding-right: 36px; /* room for .a-dialog__close so long titles don't run under it */
+  font-family: var(--nk-font-display);
+  font-size: var(--nk-font-size-lg);
+}
+
+.a-dialog p {
+  margin: 0 0 var(--nk-space-4);
+  line-height: 1.6;
+}
+
+.a-dialog__actions {
+  display: flex;
+  gap: var(--nk-space-3);
+  justify-content: flex-end;
+  margin-top: var(--nk-space-4);
+}
+
+.a-dialog--wide {
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+/* Used by MasterList's View panel, which can hold an image plus one or more
+   rendered rich-text previews (viewHtml) — tall enough that it regularly
+   exceeds the viewport. Unlike .a-dialog--wide, the dialog itself does NOT
+   scroll (its close button is position:absolute relative to it, and would
+   scroll away with the content otherwise) — only the inner .viewScroll
+   wrapper between the close button and the footer actions bar scrolls, so
+   both stay reachable no matter how long the content is. */
+.a-dialog--view {
+  max-width: 560px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Export dialog fields (shared across Orders/Catalogue/Customers/
+   Inventory/Masters/Audit Logs export dialogs) ---------- */
+
+.a-export-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nk-space-4);
+  margin-bottom: var(--nk-space-2);
+}
+
+.a-export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--nk-color-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.a-export-field__readonly {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-main);
+}
+
+/* ---------- Master-data forms ---------- */
+
+.a-form-field {
+  margin-bottom: var(--nk-space-4);
+}
+
+.a-form-field label {
+  display: block;
+  margin-bottom: var(--nk-space-1);
+  font-weight: 600;
+}
+
+.a-form-hint {
+  margin: 0 0 var(--nk-space-2);
+  font-size: 0.8125rem;
+  color: var(--nk-color-ink-muted);
+}
+
+/* ---------- Toggle switch (checkbox fields in master forms) ---------- */
+
+.a-form-field label.a-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  width: fit-content;
+}
+
+.a-toggle input[type='checkbox'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.a-toggle__track {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--card-border);
+  transition: background-color 0.15s ease;
+}
+
+.a-toggle__track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.a-toggle__track--on {
+  background: var(--accent-green, #10b981);
+}
+
+.a-toggle__track--on::after {
+  transform: translateX(18px);
+}
+
+.a-toggle input:focus-visible + .a-toggle__track {
+  outline: 2px solid var(--nk-color-oxblood);
+  outline-offset: 2px;
+}
+
+.a-toggle__label {
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+/* ---------- Login ---------- */
+
+.a-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--nk-space-4);
+  background: var(--dashboard-bg);
+}
+
+.a-login__card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-top: 4px solid var(--accent-blue);
+  border-radius: var(--nk-radius-lg);
+  padding: var(--nk-space-8);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+.a-login__field {
+  margin-bottom: var(--nk-space-4);
+}
+
+.a-login__field label {
+  display: block;
+  margin-bottom: var(--nk-space-2);
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.a-login__input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.a-login__icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.a-login__input-wrap input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px 10px 40px !important;
+  min-height: 40px;
+  background: var(--dashboard-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-main);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.a-login__input-wrap input:focus {
+  border-color: var(--nk-color-oxblood);
+  box-shadow: 0 0 0 3px rgba(211, 18, 37, 0.08);
+}
+
+/* ---------- Redesigned Sidebar Submenu links ---------- */
+.a-side__submenu {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0 6px 0;
+  gap: 4px;
+  margin-left: 28px; /* Alignment with parent icons */
+  padding-left: 24px;
+}
+
+/* Tree vertical connector line - stops at the last item's dot (::after
+   below) instead of running the full box height. A plain `border-left`
+   on this container runs past the last dot down through the bottom
+   padding, leaving a dangling stub below the last link - looks broken.
+   `bottom: 24px` matches the last (single-line) link's half-height (~18px)
+   plus this container's bottom padding (6px), measured against the real
+   rendered sidebar. */
+.a-side__submenu::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 24px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.a-side__submenu-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 8px 16px !important;
+  color: var(--sidebar-text);
+  text-decoration: none;
+  font-size: 0.86rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+  margin-right: 12px;
+}
+
+/* Branch horizontal tick connector */
+.a-side__submenu-link::before {
+  content: '';
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  width: 12px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Muted dot indicator node */
+.a-side__submenu-link::after {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 0.2s ease;
+}
+
+.a-side__submenu-link:hover {
+  color: var(--sidebar-text-hover);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.a-side__submenu-link--active {
+  color: #fff !important;
+  background: #411322 !important; /* Rounded active overlay */
+  font-weight: 600;
+}
+
+.a-side__submenu-link--active::after {
+  background: #ffffff !important; /* Active glowing white dot node */
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+}
+
+/* ---------- Breadcrumbs ---------- */
+.a-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.a-breadcrumbs span {
+  color: var(--text-muted);
+}
+
+.a-breadcrumbs a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.a-breadcrumbs a:hover {
+  color: var(--accent-red);
+}
+
+/* ---------- KPI Summary Cards Grid ---------- */
+.a-kpi-grid {
+  display: grid;
+  /* 200px could not hold a large rupee figure: minus 40px padding, the 48px
+     icon and its 16px gap, the value had 96px to live in and "₹6,29,93,064"
+     spilled out of the card. */
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.a-kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.a-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+.a-kpi-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  /* Without this the icon is squeezed into an ellipse by a long value beside
+     it, instead of the value being the thing that yields. */
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.a-kpi-details {
+  display: flex;
+  flex-direction: column;
+  /* A flex item's default min-width is auto, which lets its content push past
+     the container instead of shrinking. This is what actually let the value
+     escape the card. */
+  min-width: 0;
+}
+
+.a-kpi-value {
+  /* Shrinks on a narrow card rather than overflowing it. Indian grouping adds
+     commas (6,29,93,064 is one character longer than 62,993,064), so the
+     headline figure needs room to give. */
+  font-size: clamp(1.15rem, 1.9vw, 1.5rem);
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Digits share a width, so figures in adjacent cards line up. */
+  font-variant-numeric: tabular-nums;
+}
+
+.a-kpi-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.a-kpi-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ---------- Progress Indicators for stock ---------- */
+.a-stock-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 120px;
+}
+
+.a-progress-bar-bg {
+  width: 100%;
+  height: 6px;
+  background: var(--card-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.a-progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* ---------- Slide-Out Drawer Panel ---------- */
+.a-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.a-drawer {
+  width: 420px;
+  height: 100%;
+  background: var(--card-bg);
+  border-left: 1px solid var(--card-border);
+  box-shadow: -6px 0 24px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.25s ease-out forwards;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.a-drawer__header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.a-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.a-drawer__footer {
+  padding: 20px 24px;
+  border-top: 1px solid var(--card-border);
+  display: flex;
+  gap: 12px;
+  background: var(--dashboard-bg);
+}
+
+.a-drawer-detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.a-drawer-detail-icon {
+  color: var(--text-muted);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.a-drawer-detail-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.a-drawer-detail-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.a-drawer-detail-value {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+/* ---------- Onboarding tour (driver.js) ---------- */
+/* Reskins driver.js's default popover to match this dashboard's own card and
+   button styling, using the same tokens as everything else on the page,
+   rather than driver.js's stock white/blue look. */
+
+.driverjs-theme-premium.driver-popover {
+  background: var(--card-bg);
+  color: var(--text-main);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md, 0 10px 25px rgba(0, 0, 0, 0.15));
+  padding: 18px 20px;
+  max-width: 340px;
+}
+
+.driverjs-theme-premium .driver-popover-title {
+  color: var(--text-main);
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.driverjs-theme-premium .driver-popover-description {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.driverjs-theme-premium .driver-popover-progress-text {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.driverjs-theme-premium .driver-popover-footer {
+  margin-top: 14px;
+}
+
+.driverjs-theme-premium .driver-popover-footer-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-shadow: none;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+}
+
+.driverjs-theme-premium .driver-popover-footer-btn:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.driverjs-theme-premium .driver-popover-prev-btn {
+  background: var(--card-bg) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--card-border) !important;
+  box-shadow: none !important;
+}
+
+.driverjs-theme-premium .driver-popover-prev-btn:hover {
+  background: var(--dashboard-bg) !important;
+}
+
+.driverjs-theme-premium .driver-popover-close-btn {
+  all: unset;
+  cursor: pointer;
+  color: var(--text-muted);
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 32px;
+  height: 28px;
+  text-align: center;
+  font-size: 18px;
+}
+.driverjs-theme-premium .driver-popover-close-btn:hover {
+  color: var(--text-main);
+}
+
+/* driver.js sets 3 of the 4 arrow border sides to transparent per placement
+   (side-top/-bottom/-left/-right classes) and leaves the pointing side at
+   its base --border color, which this overrides to match the card. */
+.driverjs-theme-premium .driver-popover-arrow {
+  border-color: var(--card-bg);
+}
+
+/* "Help Tour" trigger button, used on every page header. */
+.a-tour-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-main);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.a-tour-btn:hover {
+  background: var(--dashboard-bg);
+  border-color: #d1d5db;
+}
+
+/* Blog rich-text field (react-quill-new) — sized to be usable inside the
+   MasterForm modal without the toolbar or editor feeling cramped. */
+.a-quill-wrapper .ql-toolbar {
+  border-color: var(--card-border);
+  border-radius: 8px 8px 0 0;
+  background: var(--card-bg);
+}
+.a-quill-wrapper .ql-container {
+  border-color: var(--card-border);
+  border-radius: 0 0 8px 8px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  font-size: 0.9375rem;
+  min-height: 220px;
+}
+.a-quill-wrapper .ql-editor {
+  min-height: 220px;
+}
+
+
+/* ===========================================================================
+   Nivisa additions
+   ---------------------------------------------------------------------------
+   Everything below supports markup this rebuild introduced. It is appended
+   rather than merged into the sections above so the original design tokens
+   and component rules stay one readable block.
+   ======================================================================== */
+
+/* --- Sidebar group triggers are <button>, not <a> ------------------------
+   A button inherits the browser's own background, font and colour, so the
+   same .a-side__link class rendered two visibly different things: the plain
+   links looked right and the group headers came out grey-on-grey. */
+button.a-side__link {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-left: 4px solid transparent;
+  font: inherit;
+  font-weight: 500;
+  color: var(--sidebar-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.a-side__brand {
+  justify-content: space-between;
+}
+
+/* The drawer close button and the hamburger only exist below 900px, where
+   the sidebar becomes an overlay. Above that the sidebar is always present
+   and both would be controls for a state that cannot happen. */
+.a-side__close,
+.a-topbar__menu {
+  display: none;
+  color: inherit;
+}
+
+@media (max-width: 900px) {
+  .a-side__close,
+  .a-topbar__menu {
+    display: inline-flex;
+  }
+}
+
+/* --- Topbar -------------------------------------------------------------- */
+
+.a-topbar__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.a-topbar__search .a-input {
+  width: 100%;
+}
+
+.a-topbar__results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+
+.a-topbar__results button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+}
+
+.a-topbar__results button:hover,
+.a-topbar__results button:focus-visible {
+  background: var(--dashboard-bg);
+}
+
+/* --- Login reveal toggle -------------------------------------------------- */
+
+.a-login__reveal {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.a-login__input-wrap {
+  position: relative;
+}
+
+/* --- Forms --------------------------------------------------------------- */
+
+.a-form-field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.a-form-field > span:first-child {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.a-form-field .a-input,
+.a-form-field .a-select,
+.a-form-field textarea.a-input {
+  width: 100%;
+}
+
+.a-form-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.a-form-grid-2 {
+  display: grid;
+  gap: 0 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* --- Toolbar ------------------------------------------------------------- */
+
+.a-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.a-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.a-filter-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* --- Dialog -------------------------------------------------------------- */
+
+.a-dialog--wide {
+  max-width: 780px;
+}
+
+.a-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+/* --- Table card ---------------------------------------------------------- */
+
+.a-table-card__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.a-table-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--card-border);
+}
+
+.a-table-card__footer .a-sub {
+  margin: 0;
+}
+
+/* --- Misc ---------------------------------------------------------------- */
+
+.a-spin {
+  animation: a-spin 0.9s linear infinite;
+}
+
+@keyframes a-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Respects a user who has asked the system for less motion. A spinner that
+   keeps turning is the exact thing that setting exists to stop. */
+@media (prefers-reduced-motion: reduce) {
+  .a-spin {
+    animation: none;
+  }
+}
+
+.a-link-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Printing an order: drop the chrome so the paper carries the order alone. */
+@media print {
+  .a-side,
+  .a-topbar,
+  .a-toolbar button,
+  .a-overlay {
+    display: none !important;
+  }
+
+  .a-shell,
+  .a-main {
+    height: auto;
+    overflow: visible;
+    padding: 0;
+  }
+}
+
+/* --- Detail layouts (order, customer) -------------------------------------
+   A fixed two-column split squeezed the main column at anything under a wide
+   desktop: the order totals and the history actions were clipped at the card
+   edge. Below 1100px the aside stacks under the content instead. */
+.a-detail-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .a-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.a-detail-stack {
+  display: grid;
+  gap: 20px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* A grid item defaults to min-width:auto, so a card holding a wide table
+   refuses to shrink below that table's intrinsic width and pushes the whole
+   page into a horizontal scroll. These let the card shrink; the table then
+   scrolls inside its own .a-table-wrap, which is where the scroll belongs. */
+.a-detail-grid > *,
+.a-detail-stack > * {
+  min-width: 0;
+}
+
+/* The totals block. `auto auto` rather than `auto 1fr` so the amount column
+   is sized by its widest figure and cannot be pushed past the card edge. */
+.a-totals {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: end;
+  gap: 6px 24px;
+  margin: 18px 0 0;
+}
+
+.a-totals dd {
+  margin: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.a-totals__rule {
+  padding-top: 6px;
+  border-top: 1px solid var(--card-border);
+}
