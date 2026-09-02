@@ -23,6 +23,7 @@ from app.models.commerce import Order, OrderItem
 from app.models.customer import Customer
 from app.models.system import AuditLog
 from app.schemas.common import Page
+from app.services import admin_supabase
 
 router = APIRouter(tags=["Admin · Insights"])
 
@@ -189,11 +190,19 @@ async def sales_report(
     _: AdminPrincipal = Depends(require("reports.view")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        rows = await supabase.rpc("nivisa_admin_sales", {
+            "p_from": date_from.isoformat(), "p_to": date_to.isoformat(),
+            "p_granularity": granularity,
+        })
+    else:
+        rows = await _sales_rows(db, date_from, date_to, granularity)
+
     return {
         "granularity": granularity,
         "from": date_from.isoformat(),
         "to": date_to.isoformat(),
-        "rows": await _sales_rows(db, date_from, date_to, granularity),
+        "rows": rows,
     }
 
 
@@ -205,6 +214,12 @@ async def top_products(
     _: AdminPrincipal = Depends(require("reports.view")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await supabase.rpc("nivisa_admin_top_products", {
+            "p_from": date_from.isoformat(), "p_to": date_to.isoformat(),
+            "p_limit": limit,
+        })
+
     start = datetime.combine(date_from, datetime.min.time(), timezone.utc)
     end = datetime.combine(date_to, datetime.max.time(), timezone.utc)
 
@@ -237,6 +252,12 @@ async def top_customers(
     _: AdminPrincipal = Depends(require("reports.view")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        return await supabase.rpc("nivisa_admin_top_customers", {
+            "p_from": date_from.isoformat(), "p_to": date_to.isoformat(),
+            "p_limit": limit,
+        })
+
     start = datetime.combine(date_from, datetime.min.time(), timezone.utc)
     end = datetime.combine(date_to, datetime.max.time(), timezone.utc)
 
@@ -270,6 +291,9 @@ async def inventory_report(
     counted separately rather than valued at zero, which would understate
     the holding and look like a smaller problem than it is.
     """
+    if settings.DATA_BACKEND == "supabase":
+        return await supabase.rpc("nivisa_admin_inventory")
+
     rows = (
         await db.execute(
             select(
@@ -308,7 +332,17 @@ async def sales_csv(
     _: AdminPrincipal = Depends(require("reports.export")),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = await _sales_rows(db, date_from, date_to, "day")
+    # The same rows the JSON report returns, by construction: the download
+    # disagreeing with the table it was downloaded from is the one failure a
+    # sales export must not have.
+    if settings.DATA_BACKEND == "supabase":
+        rows = await supabase.rpc("nivisa_admin_sales", {
+            "p_from": date_from.isoformat(), "p_to": date_to.isoformat(),
+            "p_granularity": "day",
+        })
+    else:
+        rows = await _sales_rows(db, date_from, date_to, "day")
+
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(["Date", "Orders", "Revenue", "Discount", "Shipping", "Tax"])
@@ -337,6 +371,16 @@ async def audit_logs(
     _: AdminPrincipal = Depends(require("audit.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        rows, total = await admin_supabase.audit_logs(
+            action=action, entity=entity, actor_id=actor_id,
+            date_from=date_from.isoformat() if date_from else None,
+            # The day AFTER date_to, so the range covers all of the last day.
+            date_to=(date_to + timedelta(days=1)).isoformat() if date_to else None,
+            limit=limit, offset=offset,
+        )
+        return Page[dict](items=rows, total=total, limit=limit, offset=offset)
+
     query = select(AuditLog)
     count_query = select(func.count(AuditLog.id))
     conditions = []

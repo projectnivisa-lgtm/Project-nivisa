@@ -199,3 +199,42 @@ async def staff(
         offset=offset,
         **filters,
     )
+
+
+async def audit_logs(
+    *, action: str | None, entity: str | None, actor_id: int | None,
+    date_from: str | None, date_to: str | None, limit: int, offset: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Audit rows and the total.
+
+    The date bounds are inclusive of the whole end day: `lt` the day after,
+    rather than `lte` the day itself, which would stop at midnight and hide
+    everything that happened during the last day of the range.
+    """
+    filters: dict[str, str] = {}
+    if action:
+        filters["action"] = f"eq.{action}"
+    if entity:
+        filters["entity"] = f"eq.{entity}"
+    if actor_id is not None:
+        filters["actor_id"] = f"eq.{actor_id}"
+    if date_from:
+        filters["created_at"] = f"gte.{date_from}"
+    if date_to:
+        # Two conditions on one column need PostgREST's `and`, because a dict
+        # cannot carry the same key twice.
+        lower = f"created_at.gte.{date_from}," if date_from else ""
+        filters.pop("created_at", None)
+        filters["and"] = f"({lower}created_at.lt.{date_to})"
+
+    # Named explicitly, not `select *`. The endpoint exposes twelve fields and
+    # the table has more - user_agent and response_status among them - so a
+    # wildcard here would quietly widen what the audit screen discloses.
+    rows, total = await supabase.select_page(
+        "audit_logs",
+        columns="id,created_at,actor_id,actor_name,actor_email,action,"
+                "entity,entity_id,summary,changes,ip_address,status",
+        order="created_at.desc,id.desc",
+        limit=limit, offset=offset, **filters,
+    )
+    return rows, total
