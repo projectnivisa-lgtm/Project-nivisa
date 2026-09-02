@@ -21,6 +21,8 @@ COUNTS ON SMALL TABLES
 """
 from __future__ import annotations
 
+from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
 
 from app.core import supabase
@@ -266,3 +268,157 @@ async def customer_detail(customer_id: int) -> dict[str, Any] | None:
         limit=50,
     )
     return {"customer": customer, "addresses": addresses, "orders": orders}
+
+
+# Everything catalog.to_admin_detail reaches for, with the relations embedded.
+_PRODUCT_DETAIL_SELECT = (
+    "*,"
+    "product_variants(*),"
+    "product_images(*),"
+    "categories(*),"
+    "brands(*),"
+    "product_rooms(rooms(*)),"
+    "product_attributes(attributes(*))"
+)
+
+
+def _product_as_object(row: dict[str, Any]) -> SimpleNamespace:
+    """A PostgREST product shaped like the mapped one.
+
+    catalog.to_admin_detail is forty lines of mapping shared with the
+    storefront, and it reads its input by attribute - `product.variants`,
+    `v.is_active`, `v.__dict__`. Wrapping the row lets that code run unchanged
+    rather than existing twice, which is the difference between one definition
+    of a product's shape and two that drift.
+
+    PostgREST names an embed after the table, and a many-to-many arrives
+    wrapped in its join row, so both are unwrapped here to the names the
+    mappers expect.
+    """
+    def variant(v: dict[str, Any]) -> SimpleNamespace:
+        obj = SimpleNamespace(**v)
+        # in_stock is a property on the mapped class, so it does not exist in
+        # the row and has to be recomputed from the two columns behind it.
+        obj.in_stock = bool(v.get("backorder_allowed")) or (v.get("stock_quantity") or 0) > 0
+        return obj
+
+    variants = sorted(
+        (variant(v) for v in row.get("product_variants") or []),
+        key=lambda v: (v.position if v.position is not None else 0, v.id),
+    )
+    images = sorted(
+        (SimpleNamespace(**i) for i in row.get("product_images") or []),
+        key=lambda i: (i.position if i.position is not None else 0, i.id),
+    )
+
+    product = SimpleNamespace(**{
+        k: v for k, v in row.items()
+        if k not in ("product_variants", "product_images", "categories", "brands",
+                     "product_rooms", "product_attributes")
+    })
+    product.variants = variants
+    product.images = images
+    product.category = SimpleNamespace(**row["categories"]) if row.get("categories") else None
+    product.brand = SimpleNamespace(**row["brands"]) if row.get("brands") else None
+    product.rooms = [
+        SimpleNamespace(**link["rooms"])
+        for link in (row.get("product_rooms") or []) if link.get("rooms")
+    ]
+    product.attributes = [
+        SimpleNamespace(**link["attributes"])
+        for link in (row.get("product_attributes") or []) if link.get("attributes")
+    ]
+    return product
+
+
+async def product_detail(product_id: int) -> SimpleNamespace | None:
+    row = await supabase.select_one(
+        "products", columns=_PRODUCT_DETAIL_SELECT, id=f"eq.{product_id}"
+    )
+    return _product_as_object(row) if row else None
+
+
+async def order_detail(order_id: int) -> SimpleNamespace | None:
+    """One order, wrapped so app.admin.routes.orders._detail runs unchanged.
+
+    Item and event ordering matches the relationships they stand in for -
+    items by id, events by created_at - so the invoice reads the same on both
+    backends.
+    """
+    row = await supabase.select_one(
+        "orders",
+        columns="*,order_items(*),order_events(*),customers(id,name,phone,email)",
+        id=f"eq.{order_id}",
+    )
+    if row is None:
+        return None
+
+    order = SimpleNamespace(**{
+        k: v for k, v in row.items()
+        if k not in ("order_items", "order_events", "customers")
+    })
+    order.items = [
+        SimpleNamespace(**i)
+        for i in sorted(row.get("order_items") or [], key=lambda i: i["id"])
+    ]
+    order.events = [
+        SimpleNamespace(**e)
+        for e in sorted(row.get("order_events") or [],
+                        key=lambda e: (e.get("created_at") or "", e["id"]))
+    ]
+    order.customer = SimpleNamespace(**row["customers"]) if row.get("customers") else None
+    # A property on the mapped class, so absent from the row.
+    order.is_cancellable_by_customer = (
+        row.get("payment_status") == "pending"
+        and row.get("fulfilment_status") in ("pending", "processing")
+    )
+    return order
+
+
+async def orders_for_export(
+    *, q: str | None, fulfilment: str | None, payment: str | None,
+    date_from: str | None, date_to: str | None,
+) -> list[SimpleNamespace]:
+    """Every matching order for the CSV, with its customer.
+
+    Capped at the same 10,000 as the SQLAlchemy version. An export that
+    silently stops is worse than one that refuses, but matching the existing
+    behaviour matters more here than improving it.
+    """
+    filters: dict[str, str] = {}
+    if fulfilment:
+        filters["fulfilment_status"] = f"eq.{fulfilment}"
+    if payment:
+        filters["payment_status"] = f"eq.{payment}"
+    conditions = []
+    if date_from:
+        conditions.append(f"created_at.gte.{date_from}")
+    if date_to:
+        conditions.append(f"created_at.lt.{date_to}")
+    if conditions:
+        filters["and"] = "(" + ",".join(conditions) + ")"
+    if q:
+        filters["or"] = (
+            f"(order_number.ilike.*{q}*,"
+            f"customers.name.ilike.*{q}*,customers.phone.ilike.*{q}*)"
+        )
+
+    rows = await supabase.select(
+        "orders",
+        columns="*,customers(name,phone)",
+        order="created_at.desc,id.desc",
+        limit=10_000,
+        **filters,
+    )
+    out = []
+    for row in rows:
+        order = SimpleNamespace(**{k: v for k, v in row.items() if k != "customers"})
+        order.customer = SimpleNamespace(**row["customers"]) if row.get("customers") else None
+        # PostgREST hands back timestamps as strings, and the CSV writer calls
+        # .isoformat() on this one. Parsed here rather than special-cased at
+        # the call site, so the object behaves like the mapped row it stands
+        # in for.
+        if isinstance(order.placed_at, str):
+            order.placed_at = datetime.fromisoformat(order.placed_at)
+        out.append(order)
+    return out

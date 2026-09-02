@@ -132,7 +132,11 @@ class Order(Base, TimestampMixin):
     expected_delivery_date: Mapped[Date | None] = mapped_column(Date())
 
     items: Mapped[list["OrderItem"]] = relationship(
-        back_populates="order", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="order", cascade="all, delete-orphan", lazy="selectin",
+        # Ordered for the same reason Order.events is: an invoice that lists
+        # its lines in a different order each time it is opened looks wrong
+        # even when the totals are right.
+        order_by="OrderItem.id",
     )
     events: Mapped[list["OrderEvent"]] = relationship(
         back_populates="order", cascade="all, delete-orphan",

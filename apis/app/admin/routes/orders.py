@@ -1,7 +1,7 @@
 """Order desk: list, detail, fulfilment, dispatch, cancellation, refunds."""
 import csv
 import io
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -27,6 +27,7 @@ from app.schemas.commerce import (
     OrderSummary,
 )
 from app.schemas.common import Page
+from app.services import admin_supabase
 from app.services import orders as order_service
 
 router = APIRouter(prefix="/orders", tags=["Admin · Orders"])
@@ -142,6 +143,14 @@ async def queue_counts(
     fetched page, so a tab reading "Packed 12" is not silently capped at the
     page size.
     """
+    if settings.DATA_BACKEND == "supabase":
+        found = await supabase.rpc("nivisa_admin_order_queues")
+        # Every stage present even at zero, as below: a tab that vanishes when
+        # it empties is one nobody can find again when it fills.
+        counts = {name: 0 for name in FULFILMENT_FLOW}
+        counts.update(found or {})
+        return counts
+
     rows = (
         await db.execute(select(Order.fulfilment_status, func.count(Order.id)).group_by(Order.fulfilment_status))
     ).all()
@@ -165,12 +174,20 @@ async def export_orders(
     _: AdminPrincipal = Depends(require_any("reports.export", "orders.read")),
     db: AsyncSession = Depends(get_db),
 ):
-    conditions = _filters(q, fulfilment_status, payment_status, date_from, date_to)
-    query = select(Order).outerjoin(Customer, Customer.id == Order.customer_id)
-    if conditions:
-        query = query.where(*conditions)
-
-    rows = (await db.execute(query.order_by(Order.created_at.desc()).limit(10_000))).scalars().unique().all()
+    if settings.DATA_BACKEND == "supabase":
+        rows = await admin_supabase.orders_for_export(
+            q=q, fulfilment=fulfilment_status, payment=payment_status,
+            date_from=date_from.isoformat() if date_from else None,
+            date_to=(date_to + timedelta(days=1)).isoformat() if date_to else None,
+        )
+    else:
+        conditions = _filters(q, fulfilment_status, payment_status, date_from, date_to)
+        query = select(Order).outerjoin(Customer, Customer.id == Order.customer_id)
+        if conditions:
+            query = query.where(*conditions)
+        rows = (
+            await db.execute(query.order_by(Order.created_at.desc(), Order.id.desc()).limit(10_000))
+        ).scalars().unique().all()
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -204,6 +221,12 @@ async def get_order(
     _: AdminPrincipal = Depends(require("orders.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        found = await admin_supabase.order_detail(order_id)
+        if found is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "That order no longer exists.")
+        return _detail(found)
+
     return _detail(await _load(db, order_id))
 
 

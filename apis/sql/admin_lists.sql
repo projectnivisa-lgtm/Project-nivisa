@@ -148,3 +148,30 @@ grant execute on function public.nivisa_admin_customers(text, boolean, integer, 
 
 revoke all on function public.nivisa_admin_orders(text, text, text, date, date, integer, integer) from public, anon, authenticated;
 grant execute on function public.nivisa_admin_orders(text, text, text, date, date, integer, integer) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Order queue counts, for the order desk's tabs.
+--
+-- Counted in the database rather than from a fetched page, so a tab reading
+-- "Packed 12" is not silently capped at the page size. Every stage in the flow
+-- appears even at zero: a tab that vanishes when it empties is a tab nobody
+-- can find again when it fills.
+-- ---------------------------------------------------------------------------
+create or replace function public.nivisa_admin_order_queues()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+    select coalesce(jsonb_object_agg(fulfilment_status, n), '{}'::jsonb)
+             || jsonb_build_object('awaiting_payment', (
+                    select count(*) from public.orders
+                     where payment_status = 'pending'
+                       and fulfilment_status = 'pending'))
+      from (select fulfilment_status, count(*) as n
+              from public.orders group by 1) q;
+$$;
+
+revoke all on function public.nivisa_admin_order_queues() from public, anon, authenticated;
+grant execute on function public.nivisa_admin_order_queues() to service_role;

@@ -8,6 +8,7 @@ fewer tile.
 import csv
 import io
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -346,10 +347,18 @@ async def sales_csv(
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(["Date", "Orders", "Revenue", "Discount", "Shipping", "Tax"])
+    # Money to two decimals, explicitly. The two backends produce the same
+    # NUMBER in different notation - a Python float renders 14999.0 and a
+    # Postgres numeric 14999.00 - and a sales export that changes its decimal
+    # places depending on which deployment produced it is one an accountant
+    # has to ask about. Two places is also simply what money looks like.
+    def money(value) -> str:
+        return f"{Decimal(str(value)):.2f}"
+
     for row in rows:
         writer.writerow([
-            row["period"], row["orders"], row["revenue"],
-            row["discount"], row["shipping"], row["tax"],
+            row["period"], row["orders"], money(row["revenue"]),
+            money(row["discount"]), money(row["shipping"]), money(row["tax"]),
         ])
     buffer.seek(0)
     return StreamingResponse(

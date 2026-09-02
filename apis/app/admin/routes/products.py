@@ -23,6 +23,7 @@ from app.schemas.catalog import (
     StockAdjustment,
 )
 from app.schemas.common import Message, Page
+from app.services import admin_supabase
 from app.services import catalog as catalog_service
 from app.services.orders import adjust_stock
 
@@ -201,6 +202,12 @@ async def get_product(
     _: AdminPrincipal = Depends(require("products.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        found = await admin_supabase.product_detail(product_id)
+        if found is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "That product no longer exists.")
+        return catalog_service.to_admin_detail(found)
+
     return catalog_service.to_admin_detail(await _load(db, product_id))
 
 
