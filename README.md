@@ -10,6 +10,7 @@ web/               Next.js storefront.
 docs/              Design decisions.
 ```
 
+
 All three run from one `docker compose up`. The storefront and the dashboard
 are separate applications on purpose: they have different audiences, different
 auth, and almost no shared code.
