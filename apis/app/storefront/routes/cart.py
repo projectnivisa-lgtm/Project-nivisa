@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import get_optional_customer
 from app.models.catalog import ProductVariant
@@ -13,6 +14,7 @@ from app.models.customer import Customer
 from app.schemas.commerce import CartItemIn, CartItemQuantity, CartOut, CouponApply
 from app.schemas.common import Message
 from app.services import cart as cart_service
+from app.services import cart_supabase
 from app.services.pricing import CouponError, resolve_coupon
 
 router = APIRouter(prefix="/cart", tags=["Shop · Cart"])
@@ -45,6 +47,16 @@ async def view_cart(
     customer: Customer | None = Depends(get_optional_customer),
     x_cart_token: str | None = Header(None, alias="X-Cart-Token"),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        token = x_cart_token
+        if customer is None and not token:
+            token = secrets.token_urlsafe(24)
+            response.headers["X-Cart-Token"] = token
+        sb_cart = await cart_supabase.get_or_create_cart(
+            customer_id=customer.id if customer else None, session_token=token
+        )
+        return await cart_supabase.serialise(sb_cart, postal_code=postal_code)
+
     cart, _ = await _resolve(db, customer, x_cart_token, response)
     payload = await cart_service.serialise(db, cart, postal_code=postal_code)
     await db.commit()

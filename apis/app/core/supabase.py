@@ -34,6 +34,7 @@ THE FAILURE MODE TO KNOW ABOUT
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -77,13 +78,14 @@ def _headers(key: str) -> dict[str, str]:
     }
 
 
-async def _request(method: str, path: str, **kwargs: Any) -> Any:
+async def _request(method: str, path: str, headers: dict[str, str] | None = None, **kwargs: Any) -> Any:
     base, key = _require_settings()
     url = f"{base}/rest/v1/{path.lstrip('/')}"
+    merged = {**_headers(key), **(headers or {})}
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         try:
-            response = await client.request(method, url, headers=_headers(key), **kwargs)
+            response = await client.request(method, url, headers=merged, **kwargs)
         except httpx.HTTPError as exc:
             # The box could not reach Supabase at all. Distinct from a query
             # that came back empty, and the caller usually wants to know.
@@ -100,7 +102,16 @@ async def _request(method: str, path: str, **kwargs: Any) -> Any:
 
     if not response.content:
         return None
-    return response.json()
+
+    # parse_float=Decimal, and it is not optional.
+    #
+    # PostgREST serialises a numeric column as a bare JSON number, so a price
+    # of 124000.00 arrives as the token `124000.00` and Python's json turns it
+    # into the float 124000.0. Money in floats is how a total ends up a paisa
+    # out and nobody can say which line did it. Decimal here means every
+    # numeric - prices, tax rates, discounts, shipping - reaches the pricing
+    # code in the same type it has in the database.
+    return response.json(parse_float=Decimal)
 
 
 async def select(
@@ -133,6 +144,22 @@ async def select(
 async def select_one(table: str, **kwargs: Any) -> dict[str, Any] | None:
     rows = await select(table, limit=1, **kwargs)
     return rows[0] if rows else None
+
+
+async def insert(table: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Insert one row and return it.
+
+    `Prefer: return=representation` because the caller almost always needs the
+    generated id, and asking for it back is one request where fetching it
+    afterwards is two - and the second one has to guess how to find the row it
+    just wrote.
+    """
+    rows = await _request(
+        "POST", table, json=data, headers={"Prefer": "return=representation"}
+    )
+    if not rows:
+        raise SupabaseError(f"INSERT into {table} returned no row")
+    return rows[0]
 
 
 async def rpc(function: str, payload: dict[str, Any] | None = None) -> Any:
