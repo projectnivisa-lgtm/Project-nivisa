@@ -24,7 +24,17 @@ async def get_or_create_cart(
 
     cart = (await db.execute(query.order_by(Cart.id.desc()))).scalars().first()
     if cart is None:
-        cart = Cart(customer_id=customer_id, session_token=session_token)
+        # Assigned empty so SQLAlchemy treats the collection as loaded, the
+        # same reason create_product does it. lazy="selectin" is a strategy
+        # for a row that was QUERIED; this one is constructed, so after the
+        # flush `items` is unloaded and serialise's first read of it emits a
+        # lazy load, which raises MissingGreenlet under asyncio.
+        #
+        # Empty is also the truth for a cart created a line ago. The branch
+        # above was always fine, which is what hid this: it needs a visitor
+        # with no cart yet, and the storefront asks for the cart on every
+        # page, so it was a 500 on the first page load of every new session.
+        cart = Cart(customer_id=customer_id, session_token=session_token, items=[])
         db.add(cart)
         await db.flush()
     return cart
