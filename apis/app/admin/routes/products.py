@@ -4,16 +4,23 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core import audit
+from app.core import audit, supabase
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
 from app.models.ar import ProductArAsset
 from app.models.catalog import (
-    CollectionProduct, Product, ProductAttribute, ProductImage, ProductRoom,
+    CollectionProduct,
+    Product,
+    ProductAttribute,
+    ProductImage,
+    ProductRoom,
     ProductVariant,
 )
 from app.schemas.catalog import (
-    ProductAdminRow, ProductWrite, StockAdjustment,
+    ProductAdminRow,
+    ProductWrite,
+    StockAdjustment,
 )
 from app.schemas.common import Message, Page
 from app.services import catalog as catalog_service
@@ -73,6 +80,19 @@ async def list_products(
     _: AdminPrincipal = Depends(require("products.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        # One RPC. This endpoint searches across names AND SKUs, filters
+        # through three join tables and sorts on values that only exist once
+        # variants are aggregated - none of which PostgREST expresses, and a
+        # filter it does not understand comes back as 200 and an empty list.
+        # See apis/sql/admin_products.sql.
+        return await supabase.rpc("nivisa_admin_products", {
+            "p_q": q, "p_status": status_filter, "p_category_id": category_id,
+            "p_brand_id": brand_id, "p_room_id": room_id,
+            "p_collection_id": collection_id, "p_stock": stock, "p_ar": ar,
+            "p_sort": sort, "p_limit": limit, "p_offset": offset,
+        })
+
     query = select(Product).options(*_LOADED)
     count_query = select(func.count(func.distinct(Product.id))).select_from(Product)
 
