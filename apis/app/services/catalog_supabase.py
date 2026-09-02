@@ -24,8 +24,11 @@ WHAT TO WATCH FOR
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 from app.core import supabase
-from app.schemas.catalog import CategoryTree, RoomOut
+from app.schemas.catalog import CategoryTree, ProductCard, RoomOut
 
 # Matches _VISIBLE in the SQLAlchemy routes. Written out rather than imported
 # because that one is a SQLAlchemy expression, and the two must be changed
@@ -87,3 +90,148 @@ async def rooms() -> list[RoomOut]:
         order="position,name",
     )
     return [RoomOut.model_validate(row) for row in rows]
+
+
+# Everything catalog.to_card reaches for. Ordering of the embeds is applied in
+# Python: PostgREST does not promise an order for embedded rows, and "the first
+# image" silently meaning "whichever arrived first" is how the same product
+# shows a different photograph on two deployments.
+_CARD_SELECT = (
+    "id,name,slug,tagline,status,seating_capacity,created_at,"
+    "category_id,brand_id,"
+    "product_variants(*),product_images(*),categories(*),brands(*)"
+)
+
+
+def product_as_object(row: dict[str, Any]) -> SimpleNamespace:
+    """A PostgREST product shaped like the mapped one.
+
+    catalog.to_card builds twenty fields and is shared with every other
+    listing; wrapping the row lets it run unchanged rather than being written
+    a second time in SQL, where the two would drift.
+    """
+    def variant(v: dict[str, Any]) -> SimpleNamespace:
+        obj = SimpleNamespace(**v)
+        # A property on the mapped class, so not a column.
+        obj.in_stock = bool(v.get("backorder_allowed")) or (v.get("stock_quantity") or 0) > 0
+        return obj
+
+    product = SimpleNamespace(**{
+        k: v for k, v in row.items()
+        if k not in ("product_variants", "product_images", "categories", "brands")
+    })
+    product.variants = sorted(
+        (variant(v) for v in row.get("product_variants") or []),
+        key=lambda v: (v.position if v.position is not None else 0, v.id),
+    )
+    product.images = sorted(
+        (SimpleNamespace(**i) for i in row.get("product_images") or []),
+        key=lambda i: (i.position if i.position is not None else 0, i.id),
+    )
+    product.category = SimpleNamespace(**row["categories"]) if row.get("categories") else None
+    product.brand = SimpleNamespace(**row["brands"]) if row.get("brands") else None
+    return product
+
+
+async def products_by_id(ids: list[int]) -> dict[int, SimpleNamespace]:
+    if not ids:
+        return {}
+    rows = await supabase.select(
+        "products", columns=_CARD_SELECT,
+        id="in.(" + ",".join(str(i) for i in ids) + ")",
+    )
+    return {row["id"]: product_as_object(row) for row in rows}
+
+
+async def product_cards(ids: list[int], ratings: dict[int, tuple[float, int]]) -> list[ProductCard]:
+    """Cards for a page of ids, IN THE ORDER GIVEN.
+
+    The `in.(...)` filter returns rows in whatever order the database likes,
+    so the ordering the function worked out has to be reapplied here - dropping
+    it would quietly ignore the customer's sort.
+    """
+    from app.services import catalog as catalog_service
+
+    found = await products_by_id(ids)
+    return [
+        catalog_service.to_card(found[i], ratings)
+        for i in ids if i in found
+    ]
+
+
+# The detail view needs everything the card does, plus the rooms and attributes
+# a product belongs to and the fields only a product page shows.
+_DETAIL_SELECT = (
+    "*,product_variants(*),product_images(*),categories(*),brands(*),"
+    "product_rooms(rooms(*)),product_attributes(attributes(*))"
+)
+
+
+async def product_detail(slug: str) -> SimpleNamespace | None:
+    """One visible product by slug, or None so the route can 404.
+
+    `status=eq.active` is applied here, not left to the caller: a draft or
+    archived product reaching a customer is a leak, and the safest place for
+    that rule is the query rather than a check someone can forget.
+    """
+    row = await supabase.select_one(
+        "products", columns=_DETAIL_SELECT,
+        slug=f"eq.{slug}", status=f"eq.{VISIBLE_STATUS}",
+    )
+    if row is None:
+        return None
+
+    product = product_as_object({
+        k: v for k, v in row.items()
+        if k not in ("product_rooms", "product_attributes")
+    })
+    product.rooms = [
+        SimpleNamespace(**link["rooms"])
+        for link in (row.get("product_rooms") or []) if link.get("rooms")
+    ]
+    product.attributes = [
+        SimpleNamespace(**link["attributes"])
+        for link in (row.get("product_attributes") or []) if link.get("attributes")
+    ]
+    return product
+
+
+async def ratings_for(product_ids: list[int]) -> dict[int, tuple[float, int]]:
+    """Approved-review averages, matching catalog.rating_map.
+
+    Aggregated in the application because PostgREST has no GROUP BY. A product
+    page asks for one product, so this is a handful of rows; the listing gets
+    its ratings from the SQL function instead, where the page could be
+    twenty-four products at once.
+    """
+    if not product_ids:
+        return {}
+    rows = await supabase.select(
+        "reviews", columns="product_id,rating",
+        product_id="in.(" + ",".join(str(i) for i in product_ids) + ")",
+        status="eq.approved",
+    )
+    buckets: dict[int, list[float]] = {}
+    for row in rows:
+        buckets.setdefault(row["product_id"], []).append(float(row["rating"]))
+    return {
+        pid: (round(sum(vals) / len(vals), 2), len(vals))
+        for pid, vals in buckets.items()
+    }
+
+
+async def ar_asset_for(product_id: int) -> SimpleNamespace | None:
+    row = await supabase.select_one("product_ar_assets", product_id=f"eq.{product_id}")
+    if row is None:
+        return None
+    asset = SimpleNamespace(**row)
+    # A property on the mapped class, so not a column.
+    asset.has_any_model = bool(row.get("model_url") or row.get("ios_model_url"))
+    return asset
+
+
+async def collections(featured_only: bool) -> list[dict[str, Any]]:
+    filters = {"is_featured": "eq.true"} if featured_only else {}
+    return await supabase.select(
+        "collections", is_active="eq.true", order="position,name", **filters
+    )

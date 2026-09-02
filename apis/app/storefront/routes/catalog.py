@@ -6,6 +6,7 @@ from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import supabase
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import get_optional_customer
@@ -78,6 +79,34 @@ async def list_products(
     cannot honour is not accepted and silently ignored - a chip that claims
     to be narrowing an unfiltered grid is a lie the customer can see.
     """
+    if settings.DATA_BACKEND == "supabase":
+        found = await supabase.rpc("nivisa_shop_products", {
+            "p_q": q, "p_category": category, "p_room": room,
+            "p_collection": collection, "p_brand": brand,
+            "p_material": material, "p_finish": finish,
+            "p_colour": colour, "p_style": style,
+            "p_min_price": float(min_price) if min_price is not None else None,
+            "p_max_price": float(max_price) if max_price is not None else None,
+            "p_max_width_mm": max_width_mm, "p_seats": seats,
+            "p_in_stock": in_stock, "p_sort": sort,
+            "p_limit": limit, "p_offset": offset,
+        })
+        # An unknown category slug is a 404, not an unfiltered grid - the same
+        # answer the SQLAlchemy path gives, and the difference between "no such
+        # page" and "we sell nothing in this room".
+        if found.get("category_missing"):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "No such category.")
+
+        ids = found.get("ids") or []
+        ratings = {
+            int(pid): (float(pair[0]), int(pair[1]))
+            for pid, pair in (found.get("ratings") or {}).items()
+        }
+        return Page[ProductCard](
+            items=await catalog_supabase.product_cards(ids, ratings),
+            total=found.get("total") or 0, limit=limit, offset=offset,
+        )
+
     query = select(Product).options(*_LOADED).where(_VISIBLE)
     count_query = select(func.count(func.distinct(Product.id))).select_from(Product).where(_VISIBLE)
     conditions = []
@@ -180,18 +209,28 @@ async def list_products(
             .where(ProductVariant.product_id == Product.id, ProductVariant.is_active.is_(True))
             .scalar_subquery()
         )
-        query = query.order_by(cheapest.asc() if sort == "price_asc" else cheapest.desc())
+        # created_at then id after the derived sort, so ties are broken the
+        # same way every time. A catalogue seeded in one transaction shares a
+        # created_at across dozens of rows, and an ORDER BY with ties is free
+        # to return them in any order - which across pages means a product
+        # appearing twice, or not at all.
+        query = query.order_by(
+            cheapest.asc() if sort == "price_asc" else cheapest.desc(),
+            Product.created_at.desc(), Product.id.desc(),
+        )
     elif sort == "newest":
-        query = query.order_by(Product.created_at.desc())
+        query = query.order_by(Product.created_at.desc(), Product.id.desc())
     elif sort == "rating":
         average = (
             select(func.avg(Review.rating))
             .where(Review.product_id == Product.id, Review.status == "approved")
             .scalar_subquery()
         )
-        query = query.order_by(average.desc().nullslast())
+        query = query.order_by(
+            average.desc().nullslast(), Product.created_at.desc(), Product.id.desc()
+        )
     else:
-        query = query.order_by(Product.created_at.desc())
+        query = query.order_by(Product.created_at.desc(), Product.id.desc())
 
     rows = (await db.execute(query.limit(limit).offset(offset))).scalars().unique().all()
     ratings = await catalog_service.rating_map(db, [p.id for p in rows])
@@ -208,6 +247,23 @@ async def get_product(
     db: AsyncSession = Depends(get_db),
     customer: Customer | None = Depends(get_optional_customer),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        from app.services import ar as ar_service
+
+        found = await catalog_supabase.product_detail(slug)
+        if found is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "We could not find that piece.")
+
+        # Recording the view is a write, and the customer account screens are
+        # not ported yet - so it is skipped rather than half-done. A missing
+        # "recently viewed" entry costs a convenience; a half-written one
+        # would be a bug to find later.
+        ratings = await catalog_supabase.ratings_for([found.id])
+        asset = await catalog_supabase.ar_asset_for(found.id)
+        return catalog_service.to_detail(
+            found, ratings.get(found.id), ar=ar_service.to_public(asset)
+        )
+
     product = (
         await db.execute(
             select(Product)
@@ -324,6 +380,18 @@ async def collections(
     featured_only: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        rows = await catalog_supabase.collections(featured_only)
+        members = await supabase.select("collection_products", columns="collection_id")
+        counts: dict[int, int] = {}
+        for member in members:
+            key = member["collection_id"]
+            counts[key] = counts.get(key, 0) + 1
+        return [
+            CollectionOut.model_validate({**r, "product_count": counts.get(r["id"], 0)})
+            for r in rows
+        ]
+
     query = select(Collection).where(Collection.is_active.is_(True))
     if featured_only:
         query = query.where(Collection.is_featured.is_(True))
@@ -349,6 +417,9 @@ async def filter_options(db: AsyncSession = Depends(get_db)):
     attributes that are actually on a visible product are returned - a
     filter that can only ever return nothing is worse than no filter.
     """
+    if settings.DATA_BACKEND == "supabase":
+        return await supabase.rpc("nivisa_shop_filters")
+
     used = (
         select(ProductAttribute.attribute_id)
         .join(Product, Product.id == ProductAttribute.product_id)
