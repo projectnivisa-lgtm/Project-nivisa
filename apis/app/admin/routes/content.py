@@ -86,6 +86,15 @@ async def get_page(
     _: AdminPrincipal = Depends(require("content.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if app_settings.DATA_BACKEND == "supabase":
+        # Unlike the storefront's version this does NOT filter on
+        # is_published: the admin screen is where an unpublished page is
+        # edited, and one that 404s cannot be published.
+        found = await admin_supabase.page(slug)
+        if found is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "That page does not exist.")
+        return PageOut.model_validate(found)
+
     row = (await db.execute(select(PageModel).where(PageModel.slug == slug))).scalars().first()
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That page does not exist.")

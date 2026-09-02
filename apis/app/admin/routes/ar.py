@@ -15,7 +15,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core import audit
+from app.core import audit, supabase
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
@@ -36,6 +36,7 @@ from app.schemas.ar import (
     ArValidationOut,
 )
 from app.schemas.common import Page
+from app.services import admin_supabase
 from app.services import ar as ar_service
 
 router = APIRouter(prefix="/ar", tags=["Admin · AR"])
@@ -93,6 +94,12 @@ async def list_ar(
     is "which pieces still need a model", and a list of only the ones already
     done cannot answer it.
     """
+    if settings.DATA_BACKEND == "supabase":
+        return await supabase.rpc("nivisa_admin_ar_list", {
+            "p_q": q, "p_status": status_filter,
+            "p_limit": limit, "p_offset": offset,
+        })
+
     query = (
         select(Product, ProductArAsset)
         .outerjoin(ProductArAsset, ProductArAsset.product_id == Product.id)
@@ -151,6 +158,15 @@ async def get_ar(
     _: AdminPrincipal = Depends(require("products.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        found = await admin_supabase.ar_product(product_id)
+        if found is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "That product no longer exists.")
+        row = await admin_supabase.ar_asset(product_id)
+        if row is None:
+            row = await admin_supabase.create_ar_asset(product_id)
+        return _serialise(admin_supabase.as_ar_asset(row), found)
+
     product = await _load_product(db, product_id)
     asset = await _load_asset(db, product_id)
     if asset is None:
@@ -431,6 +447,21 @@ async def ar_report(
     reports back whether the model was placed in a room. Any such figure here
     would be invented, and one invented number discredits the two real ones.
     """
+    if settings.DATA_BACKEND == "supabase":
+        rows = await supabase.rpc("nivisa_admin_ar_report", {"p_days": days})
+        return [
+            ArReportRow(
+                product_id=r["product_id"], product_name=r["product_name"],
+                opened=r["opened"], added_to_cart=r["added_to_cart"],
+                # Null rather than zero when nothing opened AR: a rate over no
+                # sessions is undefined, and "0%" reads as a product AR failed on.
+                conversion_pct=(
+                    round(r["added_to_cart"] / r["opened"] * 100, 1) if r["opened"] else None
+                ),
+            )
+            for r in (rows or [])
+        ]
+
     from datetime import timedelta
 
     since = datetime.now(timezone.utc) - timedelta(days=days)

@@ -21,7 +21,7 @@ COUNTS ON SMALL TABLES
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
@@ -422,3 +422,47 @@ async def orders_for_export(
             order.placed_at = datetime.fromisoformat(order.placed_at)
         out.append(order)
     return out
+
+
+async def ar_product(product_id: int) -> SimpleNamespace | None:
+    """A product with its variants, for the AR validator."""
+    row = await supabase.select_one(
+        "products", columns="*,product_variants(*)", id=f"eq.{product_id}"
+    )
+    if row is None:
+        return None
+    product = SimpleNamespace(**{k: v for k, v in row.items() if k != "product_variants"})
+    product.variants = sorted(
+        (SimpleNamespace(**v) for v in row.get("product_variants") or []),
+        key=lambda v: (v.position if v.position is not None else 0, v.id),
+    )
+    return product
+
+
+def as_ar_asset(row: dict[str, Any]) -> SimpleNamespace:
+    """An asset row shaped like the mapped one, for ar_service.validate.
+
+    has_any_model is a property on ProductArAsset, so it is not a column and
+    does not come back from PostgREST. Recomputed here, in the one place that
+    builds these, rather than at each call site.
+    """
+    asset = SimpleNamespace(**row)
+    asset.has_any_model = bool(row.get("model_url") or row.get("ios_model_url"))
+    return asset
+
+
+async def ar_asset(product_id: int) -> dict[str, Any] | None:
+    return await supabase.select_one("product_ar_assets", product_id=f"eq.{product_id}")
+
+
+async def create_ar_asset(product_id: int) -> dict[str, Any]:
+    """Materialise an empty asset row, as the Postgres path does on first read.
+
+    The editor always has something to open and the caller needs no "create or
+    edit" branch. Nothing is published by existing.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    return await supabase.insert("product_ar_assets", {
+        "product_id": product_id, "status": "unavailable",
+        "created_at": now, "updated_at": now,
+    })
