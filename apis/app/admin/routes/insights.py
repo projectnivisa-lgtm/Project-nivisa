@@ -14,6 +14,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import Date, cast, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import supabase
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
 from app.models.catalog import Product, ProductVariant, Review
@@ -40,6 +42,12 @@ async def dashboard(
     _: AdminPrincipal = Depends(require("dashboard.view")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        # One RPC, not eight queries. PostgREST has no SUM or GROUP BY, and
+        # doing the arithmetic here would mean fetching every order over
+        # HTTPS to add it up - see apis/sql/admin_dashboard.sql.
+        return await supabase.rpc("nivisa_admin_dashboard", {"days": days})
+
     since = _window(days)
     previous_since = since - timedelta(days=days)
 
