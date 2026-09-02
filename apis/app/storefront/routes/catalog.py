@@ -6,20 +6,36 @@ from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import get_optional_customer
 from app.models.catalog import (
-    Attribute, Brand, Category, Collection, CollectionProduct, Product,
-    ProductAttribute, ProductImage, ProductRoom, ProductVariant, RecentlyViewed,
-    Review, Room,
+    Attribute,
+    Brand,
+    Category,
+    Collection,
+    CollectionProduct,
+    Product,
+    ProductAttribute,
+    ProductRoom,
+    ProductVariant,
+    RecentlyViewed,
+    Review,
+    Room,
 )
 from app.models.customer import Customer
 from app.schemas.catalog import (
-    AttributeOut, BrandOut, CategoryTree, CollectionOut, ProductCard,
-    ProductDetail, RoomOut,
+    AttributeOut,
+    BrandOut,
+    CategoryTree,
+    CollectionOut,
+    ProductCard,
+    ProductDetail,
+    RoomOut,
 )
 from app.schemas.common import Page
 from app.services import catalog as catalog_service
+from app.services import catalog_supabase
 
 router = APIRouter(prefix="/catalog", tags=["Shop · Catalogue"])
 
@@ -263,6 +279,13 @@ async def related_products(
 
 @router.get("/categories", response_model=list[CategoryTree])
 async def categories(db: AsyncSession = Depends(get_db)):
+    # The database may not be reachable by the wire protocol at all - see
+    # docs/CPANEL-SUPABASE-HTTP.md. `db` is still injected and simply unused
+    # on that path; removing the dependency would change the signature for
+    # both backends to save one unopened connection.
+    if settings.DATA_BACKEND == "supabase":
+        return await catalog_supabase.category_tree()
+
     rows = (
         await db.execute(
             select(Category).where(Category.is_active.is_(True)).order_by(Category.position, Category.name)
@@ -287,6 +310,9 @@ async def categories(db: AsyncSession = Depends(get_db)):
 
 @router.get("/rooms", response_model=list[RoomOut])
 async def rooms(db: AsyncSession = Depends(get_db)):
+    if settings.DATA_BACKEND == "supabase":
+        return await catalog_supabase.rooms()
+
     rows = (
         await db.execute(select(Room).where(Room.is_active.is_(True)).order_by(Room.position, Room.name))
     ).scalars().all()

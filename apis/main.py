@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.admin.router import admin_router
+from app.core import supabase
 from app.core.config import settings
 from app.core.database import engine
 from app.storefront.router import storefront_router
@@ -322,6 +323,26 @@ async def health_db(response: Response):
     narrate its own connection settings to the internet.
     """
     started = time.perf_counter()
+
+    # Which path is checked follows DATA_BACKEND, or this reports on a
+    # connection the deployment does not use: the cPanel box cannot open 5432
+    # at all, so a Postgres probe there is always red and says nothing about
+    # whether the API can actually read anything.
+    if settings.DATA_BACKEND == "supabase":
+        ok, detail = await supabase.health()
+        if ok:
+            return {
+                "database": "ok",
+                "via": "supabase-postgrest",
+                "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+            }
+        logger.error("Supabase health check failed: %s", detail)
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        body: dict[str, object] = {"database": "unreachable", "via": "supabase-postgrest"}
+        if settings.APP_ENV in ("staging", "local"):
+            body |= {"error": detail, "dialled": settings.SUPABASE_URL}
+        return body
+
     try:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))
@@ -336,7 +357,7 @@ async def health_db(response: Response):
 
         logger.error("Database health check failed: %s", detail)
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        body: dict[str, object] = {"database": "unreachable"}
+        body = {"database": "unreachable", "via": "postgres"}
 
         if settings.APP_ENV in ("staging", "local"):
             target = urlsplit(settings.DATABASE_URL)
@@ -353,6 +374,7 @@ async def health_db(response: Response):
 
     return {
         "database": "ok",
+        "via": "postgres",
         "latency_ms": round((time.perf_counter() - started) * 1000, 1),
     }
 

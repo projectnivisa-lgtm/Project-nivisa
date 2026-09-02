@@ -25,6 +25,21 @@ class Settings(BaseSettings):
     # credential, so a production box that forgets to set them fails on
     # connect rather than silently reaching a developer's database.
     DATABASE_URL: str = "postgresql+asyncpg://nivisa:nivisa@db:5432/nivisa"
+
+    # How the database is REACHED, which is not the same question as where it
+    # is. `postgres` speaks the wire protocol on 5432 and is what everything
+    # local and Dockerised uses. `supabase` goes through PostgREST on 443,
+    # because the cPanel deployment is on a host that refuses outbound 5432
+    # and 6543 and there is nothing the application can do about that.
+    #
+    # DATABASE_URL stays set either way: seeding and migrations need a real
+    # connection and are run from a machine that has one.
+    # See docs/CPANEL-SUPABASE-HTTP.md.
+    DATA_BACKEND: Literal["postgres", "supabase"] = "postgres"
+    SUPABASE_URL: str = ""
+    # service_role. Bypasses row-level security entirely, so it is equivalent
+    # to full database access - server-side only, never a browser bundle.
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
     REDIS_URL: str = "redis://cache:6379/0"
     SQL_ECHO: bool = False
 
