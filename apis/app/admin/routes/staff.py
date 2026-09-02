@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import audit
 from app.core import permissions as perms
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import AdminPrincipal, require
 from app.core.security import hash_password
@@ -17,6 +18,7 @@ from app.schemas.identity import (
     StaffPasswordReset,
     StaffUpdate,
 )
+from app.services import admin_supabase
 
 router = APIRouter(prefix="/staff", tags=["Admin · Staff"])
 
@@ -66,6 +68,18 @@ async def list_staff(
     _: AdminPrincipal = Depends(require("staff.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        rows, total = await admin_supabase.staff(
+            q=q, role_id=role_id, is_active=is_active, limit=limit, offset=offset
+        )
+        return Page[StaffOut](
+            items=[
+                StaffOut.model_validate({**row, "role": row.get("roles")})
+                for row in rows
+            ],
+            total=total, limit=limit, offset=offset,
+        )
+
     query = select(StaffUser)
     count_query = select(func.count(StaffUser.id))
 

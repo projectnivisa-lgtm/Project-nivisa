@@ -22,7 +22,13 @@ class Customer(Base, TimestampMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     addresses: Mapped[list["Address"]] = relationship(
-        back_populates="customer", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="customer", cascade="all, delete-orphan", lazy="selectin",
+        # Ordered, because a relationship without one returns rows in whatever
+        # order the database happens to produce - which differs between two
+        # deployments of the same shop, and puts a different address at the top
+        # of the customer screen depending on which one answered. The default
+        # address first is also what the screen wants.
+        order_by="(Address.is_default.desc(), Address.id)",
     )
 
 

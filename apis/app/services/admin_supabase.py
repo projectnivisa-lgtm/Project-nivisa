@@ -238,3 +238,31 @@ async def audit_logs(
         limit=limit, offset=offset, **filters,
     )
     return rows, total
+
+
+async def customer_detail(customer_id: int) -> dict[str, Any] | None:
+    """One customer, their live addresses and their recent orders.
+
+    Archived addresses are filtered out here rather than fetched and dropped,
+    which the SQLAlchemy version does in Python only because the relationship
+    was already loaded.
+    """
+    customer = await supabase.select_one("customers", id=f"eq.{customer_id}")
+    if customer is None:
+        return None
+
+    addresses = await supabase.select(
+        "addresses", customer_id=f"eq.{customer_id}",
+        is_archived="eq.false",
+        # Matches Customer.addresses' order_by: default first, then id.
+        order="is_default.desc,id",
+    )
+    orders = await supabase.select(
+        "orders",
+        columns="id,order_number,fulfilment_status,payment_status,grand_total,"
+                "currency,placed_at,created_at,order_items(quantity)",
+        customer_id=f"eq.{customer_id}",
+        order="created_at.desc,id.desc",
+        limit=50,
+    )
+    return {"customer": customer, "addresses": addresses, "orders": orders}

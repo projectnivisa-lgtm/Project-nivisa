@@ -13,6 +13,7 @@ from app.models.customer import Customer
 from app.schemas.commerce import OrderSummary
 from app.schemas.common import Message, Page
 from app.schemas.identity import AddressOut, CustomerAdminRow, CustomerOut
+from app.services import admin_supabase
 
 router = APIRouter(prefix="/customers", tags=["Admin · Customers"])
 
@@ -99,6 +100,28 @@ async def get_customer(
     _: AdminPrincipal = Depends(require("customers.read")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        found = await admin_supabase.customer_detail(customer_id)
+        if found is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "That customer no longer exists.")
+        return {
+            "customer": CustomerOut.model_validate(found["customer"]).model_dump(),
+            "addresses": [
+                AddressOut.model_validate(a).model_dump() for a in found["addresses"]
+            ],
+            "orders": [
+                OrderSummary(
+                    id=o["id"], order_number=o["order_number"],
+                    fulfilment_status=o["fulfilment_status"],
+                    payment_status=o["payment_status"],
+                    grand_total=o["grand_total"], currency=o["currency"],
+                    item_count=sum(i["quantity"] for i in (o.get("order_items") or [])),
+                    placed_at=o["placed_at"], created_at=o["created_at"],
+                ).model_dump()
+                for o in found["orders"]
+            ],
+        }
+
     customer = (
         await db.execute(
             select(Customer).options(selectinload(Customer.addresses)).where(Customer.id == customer_id)
