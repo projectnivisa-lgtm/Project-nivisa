@@ -1,0 +1,105 @@
+# Render Blueprint for the Nivisa API.
+#
+# WHY THE API IS NOT ON cPANEL
+#   The shared cPanel box refuses outbound TCP on 5432 and 6543, so it cannot
+#   reach the database at all - proved with ECONNREFUSED against all three of
+#   the pooler's addresses on both ports. No application change fixes a
+#   firewall, and the host would not open it. Everything else about that box
+#   was fine; it simply is not allowed to talk to a database.
+#
+# HOW TO DEPLOY
+#   Render > New > Blueprint > connect this repository. Render reads this file
+#   and creates the service. The four values marked `sync: false` are NOT in
+#   this file and are typed into the dashboard once, because this repository
+#   is public and they are credentials.
+#
+#   No CLI, no local install, no account of mine - the whole deploy is the
+#   dashboard reading this file.
+#
+# AFTER THE FIRST DEPLOY
+#   1. Open https://<service>.onrender.com/api/v1/health/db. It must say
+#      "ok". If it does not, it names the reason.
+#   2. Put the service URL in the storefront's NEXT_PUBLIC_API_BASE_URL on
+#      Vercel - with NO path suffix. Unlike cPanel this app is served at the
+#      domain root, so there is no /nivisa here.
+#   3. Add the Vercel domain to CORS_ORIGINS below, or every browser call
+#      fails while curl against the same URL succeeds.
+
+services:
+  - type: web
+    name: nivisa-api
+    runtime: docker
+    dockerfilePath: ./apis/Dockerfile
+    dockerContext: ./apis
+    region: singapore
+    plan: free
+    branch: main
+
+    # Touches no database, so it answers 200 as soon as the process is up.
+    # Pointing this at an endpoint that queries would make a deploy fail on a
+    # database problem, which is a different fault and wants a different fix.
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      # `staging` deliberately, not `production`: payments, SMS and email are
+      # still stand-ins, and the app refuses to start as production while any
+      # of them is. That guard is the point - do not set this to production
+      # to make it look finished.
+      - key: APP_ENV
+        value: staging
+      - key: API_PREFIX
+        value: /api/v1
+
+      # Entered in the dashboard, never committed. This repository is public.
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: BUNNY_ACCESS_KEY
+        sync: false
+      # The storefront's own origin. Browser calls from anywhere not listed
+      # here are blocked, and the error the browser reports is about CORS
+      # rather than about this setting.
+      - key: CORS_ORIGINS
+        sync: false
+
+      - key: STOREFRONT_URL
+        sync: false
+      # Where a browser reaches this API, for redirects and emailed links.
+      # Render fills this in with the service's own URL.
+      - key: PUBLIC_API_URL
+        fromService:
+          type: web
+          name: nivisa-api
+          property: host
+
+      # Small, because the pooler is shared and this instance is not large.
+      - key: DB_POOL_SIZE
+        value: "3"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: DB_POOL_RECYCLE_SECONDS
+        value: "1800"
+
+      # Media is on Bunny, so the container needs no disk and can be replaced
+      # freely. This is what makes the free plan viable: nothing on the
+      # instance's filesystem has to survive a restart.
+      - key: STORAGE_PROVIDER
+        value: bunny
+      - key: BUNNY_STORAGE_ZONE
+        value: project-nivisas
+      - key: BUNNY_STORAGE_HOST
+        value: storage.bunnycdn.com
+      - key: BUNNY_PUBLIC_BASE_URL
+        value: https://project-nivisa.b-cdn.net
+
+      # Stand-ins until the client provides accounts. APP_ENV=staging is what
+      # permits them.
+      - key: PAYMENT_PROVIDER
+        value: mock
+      - key: SMS_PROVIDER
+        value: console
+      - key: EMAIL_PROVIDER
+        value: console
+      - key: OTP_TTL_SECONDS
+        value: "300"

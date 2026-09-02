@@ -62,6 +62,10 @@ services:
 
   api:
     build: ./apis
+    # The image defaults to a production command - no reloader, and it honours
+    # PORT because a hosting platform injects one. Development wants the
+    # opposite, so the reloader goes back on here rather than in the image.
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       db:
         condition: service_healthy
