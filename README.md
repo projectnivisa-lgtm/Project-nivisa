@@ -11,6 +11,10 @@ docs/              Design decisions.
 ```
 
 
+New to the codebase? Start with the
+[developer guide](docs/DEVELOPER-GUIDE.md): architecture, repository map,
+and local setup with or without Docker.
+
 All three run from one `docker compose up`. The storefront and the dashboard
 are separate applications on purpose: they have different audiences, different
 auth, and almost no shared code.
