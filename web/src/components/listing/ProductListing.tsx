@@ -73,7 +73,7 @@ export async function ProductListing({
 
   const chips = describeActiveFilters(
     { ...state, filters: state.filters },
-    allCategories.find((c) => c.id === state.filters.categoryId)?.name ??
+    allCategories.find((c) => c.slug === state.filters.categoryId)?.name ??
       categoryNameForChip,
   );
 

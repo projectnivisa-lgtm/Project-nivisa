@@ -58,7 +58,7 @@ export async function loadSimilarProducts(product: Product): Promise<Product[]> 
   }
 
   try {
-    return await catalogApi.getSimilarProducts(product.id, 8);
+    return await catalogApi.getSimilarProducts(product.slug, 8);
   } catch {
     return [];
   }

@@ -1,4 +1,5 @@
 """Public content: pages, banners, homepage, product reviews."""
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -6,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import supabase
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.catalog import (
@@ -22,6 +24,8 @@ from app.schemas.common import Page
 from app.schemas.content import BannerOut, PageOut
 from app.services import catalog as catalog_service
 from app.services import content_supabase
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Shop · Content"])
 
@@ -277,17 +281,40 @@ async def record_ar_event(
         # would inflate "opened" beyond the sessions that actually exist.
         return {"recorded": False}
 
+    platform = payload.get("platform")
+    if platform not in ("ios", "android", "desktop"):
+        platform = None
+
+    if settings.DATA_BACKEND == "supabase":
+        # Swallowed rather than raised, for the same reason the checks above
+        # return 202: a beacon that can fail a product page is worse than a
+        # gap in the analytics it feeds.
+        try:
+            if await supabase.select_one("products", columns="id", id=f"eq.{product_id}"):
+                now = datetime.now(timezone.utc).isoformat()
+                await supabase.insert("ar_events", {
+                    "product_id": product_id,
+                    "kind": kind,
+                    "session_token": x_cart_token[:64],
+                    "platform": platform,
+                    "created_at": now,
+                    "updated_at": now,
+                })
+                return {"recorded": True}
+        except Exception:
+            logger.exception("Failed to record AR event for product %s", product_id)
+        return {"recorded": False}
+
     exists = (await db.execute(select(Product.id).where(Product.id == product_id))).first()
     if not exists:
         return {"recorded": False}
 
-    platform = payload.get("platform")
     db.add(
         ArEvent(
             product_id=product_id,
             kind=kind,
             session_token=x_cart_token[:64],
-            platform=platform if platform in ("ios", "android", "desktop") else None,
+            platform=platform,
         )
     )
     await db.commit()

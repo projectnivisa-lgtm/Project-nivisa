@@ -21,8 +21,14 @@ const apiOrigin =
  * restarting by hand, and it looks like the change did not take.
  *
  * `watchOptions` rather than the `WATCHPACK_POLLING` environment variable
- * that used to be set here: that one is read by webpack, and `next dev` has
- * run on Turbopack since Next 16, so it had stopped doing anything at all.
+ * that used to be set here: that one is read by webpack from the environment,
+ * and this is the supported way to say the same thing in the config.
+ *
+ * It does NOT make Turbopack watch this mount, despite reading as though it
+ * should - tested 2026-09-12 by editing a server-rendered heading with each
+ * bundler: webpack served the new text in about 4 seconds, Turbopack had not
+ * served it 48 seconds later. That is why docker-compose.yml still pins
+ * `next dev --webpack` for the container.
  *
  * Off when running natively, where the native watcher works and polling is
  * just a CPU tax.

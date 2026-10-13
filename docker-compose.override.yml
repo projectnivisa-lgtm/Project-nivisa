@@ -1,0 +1,62 @@
+# Local override: reach the stack from a phone on the same Wi-Fi.
+#
+# WHY THIS FILE EXISTS
+#   "localhost" on a phone means the phone. The storefront's browser-side
+#   calls therefore have to name this machine by an address the phone can
+#   resolve, which is its LAN IP - and the API has to allow that origin, or
+#   every call fails in the browser while curl against the same URL succeeds.
+#
+#   Compose reads docker-compose.override.yml automatically, so `docker
+#   compose up` picks this up with no extra flags. Delete the file, or rename
+#   it, to go back to the localhost-only setup.
+#
+# BEFORE YOU START
+#   1. Set HOST_LAN_IP below to this machine's Wi-Fi address.
+#   2. Put the phone on the SAME Wi-Fi network.
+#
+# NOTE ON AR
+#   The 3D models are served from Bunny over HTTPS, which is what Android's
+#   Scene Viewer requires of the model itself. The page being plain HTTP over
+#   the LAN is fine for that. iOS Quick Look is stricter about the page, so
+#   an iPhone wants the tunnel route instead - see tools/share-local.md.
+
+services:
+  api:
+    environment:
+      # Models must be served over HTTPS or Android's Scene Viewer refuses to
+      # open them, and the local provider hands out plain-HTTP /media paths.
+      # Bunny gives every upload an https URL, so AR works from a phone even
+      # though the page itself is HTTP over the LAN.
+      # apis/.env points at the SHARED Supabase staging database. Left alone,
+      # the local stack edits staging data - a "local" test that changes what
+      # the client sees. This pins it back to the Postgres container, which is
+      # seeded and disposable.
+      DATA_BACKEND: postgres
+      STORAGE_PROVIDER: bunny
+      # The storefront's LAN origin has to be allowed explicitly; the API
+      # sends credentials, so "*" is not an option a browser will accept.
+      CORS_ORIGINS: >-
+        http://localhost:3000,http://localhost:3001,http://localhost:5174,
+        http://192.168.29.185:3001,http://192.168.29.185:5174
+      # Browser-facing URLs the API hands out (mock payment screen and its
+      # return trip to /checkout, email links). On a phone "localhost" is the
+      # phone, so the payment step would dead-end without these.
+      PUBLIC_API_URL: http://192.168.29.185:8000
+      STOREFRONT_URL: http://192.168.29.185:3001
+
+  web:
+    # A PRODUCTION build, not `next dev`.
+    #
+    # The dev server's hot-reload websocket is bound to localhost, so over a
+    # LAN address the handshake fails, React never hydrates, and every
+    # client-only component silently never renders - the AR button included.
+    # The page looks fine because the server-rendered HTML is still there.
+    # `next start` has no such socket, hydrates normally, and is closer to
+    # what the phone will eventually be served anyway.
+    command: ["sh", "-c", "npm run build && npm run start -- --port 3000 --hostname 0.0.0.0"]
+    environment:
+      # What the PHONE's browser uses. The server-side value below stays on
+      # the compose network and is unchanged.
+      NEXT_PUBLIC_API_BASE_URL: http://192.168.29.185:8000
+      NEXT_PUBLIC_SITE_URL: http://192.168.29.185:3001
+      INTERNAL_API_BASE_URL: http://api:8000

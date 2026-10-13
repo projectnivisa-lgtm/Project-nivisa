@@ -138,6 +138,14 @@ PRODUCT_SETS: dict[str, tuple[str, str, str]] = {
     "light": ("lamp_studio", "lamp_room", "lamp_detail"),
     "nightstand": ("bed_side", "bedroom_classic", "bed_detail"),
     "bedside": ("bed_side", "bedroom_classic", "bed_detail"),
+    "headboard": ("bed_studio", "bedroom_room", "bed_detail"),
+    "chest": ("cabinet_slots", "bedroom_classic", "wardrobe"),
+    "dining chair": ("chair_plain", "dining_room", "chair_studio"),
+    "garden chair": ("chair_plain", "outdoor_terrace", "chair_studio"),
+    "lamp": ("lamp_studio", "lamp_room", "lamp_detail"),
+    "lantern": ("lamp_studio", "outdoor_terrace", "lamp_detail"),
+    "pendant": ("lamp_detail", "dining_window", "lamp_room"),
+    "chandelier": ("lamp_detail", "dining_window", "lamp_room"),
 }
 
 DEFAULT_SET = ("living_neutral", "living_bright", "living_formal")

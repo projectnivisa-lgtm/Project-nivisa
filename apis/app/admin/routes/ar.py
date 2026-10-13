@@ -79,6 +79,101 @@ def _serialise(asset: ProductArAsset, product: Product) -> ArAssetOut:
     })
 
 
+# --- The PostgREST path ----------------------------------------------------
+#
+# The deployment reaches its database over HTTPS rather than 5432, so there is
+# no session to mutate a mapped object in. These do the same work through
+# explicit patches: load the product and its asset row, decide the changes,
+# write them, and serialise the result the same way. The validation itself is
+# shared with the SQLAlchemy path - ar_service.validate takes anything with
+# the right attributes, and as_ar_asset gives a row those attributes.
+
+
+async def _sb_context(product_id: int) -> tuple[object, dict]:
+    """The product, and its asset row - created empty if it has none."""
+    product = await admin_supabase.ar_product(product_id)
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That product no longer exists.")
+    row = await admin_supabase.ar_asset(product_id)
+    if row is None:
+        row = await admin_supabase.create_ar_asset(product_id)
+    return product, row
+
+
+async def _sb_apply(
+    product_id: int, product, changes: dict, *, action: str, summary: str,
+    principal: AdminPrincipal, request: Request, diff: dict | None = None,
+) -> ArAssetOut:
+    row = await admin_supabase.update_ar_asset(product_id, changes)
+    await admin_supabase.record_audit(
+        action=action, entity="product_ar_assets", entity_id=row.get("id"),
+        summary=summary, changes=diff, principal=principal, request=request,
+    )
+    return _serialise(admin_supabase.as_ar_asset(row), product)
+
+
+async def _accept_upload(file: UploadFile, kind: str) -> tuple[str, str]:
+    """Validate one uploaded file and store it. Returns (slot, url).
+
+    Shared by both backends: the checks are about the file, not about where
+    the row that will point at it lives, and having them in one place is what
+    stops the two paths accepting different things.
+    """
+    filename = file.filename or "model"
+    suffix = ""
+
+    try:
+        if kind == "poster":
+            check_type(file.content_type)
+            target = "poster"
+        else:
+            suffix = check_model(filename, file.content_type)
+            target = "usdz" if suffix == ".usdz" else "glb"
+            if kind != "auto" and kind != target:
+                raise UnsupportedFile(
+                    f"That file is a {target} but the {kind} slot was chosen."
+                )
+    except UnsupportedFile as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc))
+
+    data = await file.read()
+
+    # The name said .glb; this is where we find out whether it is one. Checked
+    # before the size limit so a renamed 40MB video is rejected for what it is
+    # rather than for how big it is.
+    if target != "poster":
+        try:
+            check_model_bytes(suffix, data)
+        except UnsupportedFile as exc:
+            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc))
+
+    limit_mb = settings.MAX_UPLOAD_MB if target == "poster" else MAX_MODEL_MB
+    if len(data) > limit_mb * 1024 * 1024:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"That file is {len(data) / 1_048_576:.1f} MB. The limit is {limit_mb} MB — "
+            "AR is used on a phone, often on mobile data.",
+        )
+
+    url = await get_storage().save(
+        data=data, filename=filename,
+        content_type=file.content_type or "application/octet-stream",
+        folder="ar",
+    )
+    return target, url
+
+
+def _withdrawn(row: dict) -> dict:
+    """Take a published asset back off the shop until it is checked again.
+
+    Same rule as the SQLAlchemy path: changing a model or its stated size
+    while it stays live is exactly how a wrong-scale piece reaches a customer.
+    """
+    if row.get("status") == "ready":
+        return {"status": "processing", "published_at": None}
+    return {}
+
+
 @router.get("", response_model=Page[ArAssetRow])
 async def list_ar(
     q: str | None = None,
@@ -189,6 +284,17 @@ async def update_ar(
     principal: AdminPrincipal = Depends(require("ar.manage")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        product, row = await _sb_context(product_id)
+        fields = payload.model_dump()
+        before = {k: row.get(k) for k in fields}
+        return await _sb_apply(
+            product_id, product,
+            {**fields, "uploaded_by": principal.user.id, **_withdrawn(row)},
+            action="update", summary=f"Updated AR asset for {product.name}",
+            diff=audit.diff(before, fields), principal=principal, request=request,
+        )
+
     product = await _load_product(db, product_id)
     asset = await _load_asset(db, product_id)
     if asset is None:
@@ -248,53 +354,30 @@ async def upload_model(
     `kind=auto` routes by extension, so a person can drop either model in
     without first telling the form which platform it is for.
     """
+    target, url = await _accept_upload(file, kind)
+
+    if settings.DATA_BACKEND == "supabase":
+        product, row = await _sb_context(product_id)
+        field = {"poster": "poster_url", "usdz": "ios_model_url", "glb": "model_url"}[target]
+        changes: dict = {field: url, "uploaded_by": principal.user.id}
+        version = row.get("version") or 1
+        if target != "poster":
+            # A new model is a new version, and an already-published asset
+            # comes off the shop until the replacement has been checked.
+            version += 1
+            changes.update(version=version, status="processing", published_at=None)
+        return await _sb_apply(
+            product_id, product, changes, action="upload",
+            summary=f"Uploaded {target} for {product.name} (v{version})",
+            principal=principal, request=request,
+        )
+
     product = await _load_product(db, product_id)
     asset = await _load_asset(db, product_id)
     if asset is None:
         asset = ProductArAsset(product_id=product_id)
         db.add(asset)
         await db.flush()
-
-    filename = file.filename or "model"
-
-    try:
-        if kind == "poster":
-            check_type(file.content_type)
-            target = "poster"
-        else:
-            suffix = check_model(filename, file.content_type)
-            target = "usdz" if suffix == ".usdz" else "glb"
-            if kind != "auto" and kind != target:
-                raise UnsupportedFile(
-                    f"That file is a {target} but the {kind} slot was chosen."
-                )
-    except UnsupportedFile as exc:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc))
-
-    data = await file.read()
-
-    # The name said .glb; this is where we find out whether it is one. Checked
-    # before the size limit so a renamed 40MB video is rejected for what it is
-    # rather than for how big it is.
-    if target != "poster":
-        try:
-            check_model_bytes(suffix, data)
-        except UnsupportedFile as exc:
-            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc))
-
-    limit_mb = settings.MAX_UPLOAD_MB if target == "poster" else MAX_MODEL_MB
-    if len(data) > limit_mb * 1024 * 1024:
-        raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            f"That file is {len(data) / 1_048_576:.1f} MB. The limit is {limit_mb} MB — "
-            "AR is used on a phone, often on mobile data.",
-        )
-
-    url = await get_storage().save(
-        data=data, filename=filename,
-        content_type=file.content_type or "application/octet-stream",
-        folder="ar",
-    )
 
     if target == "poster":
         asset.poster_url = url
@@ -337,12 +420,26 @@ async def remove_model(
     The stored object is deleted too, not just the reference - an orphaned
     40MB model in the bucket costs money for as long as nobody notices it.
     """
+    field = {"glb": "model_url", "usdz": "ios_model_url", "poster": "poster_url"}[kind]
+
+    if settings.DATA_BACKEND == "supabase":
+        product, row = await _sb_context(product_id)
+        if row.get(field):
+            await get_storage().delete(row[field])
+        changes = {field: None}
+        if kind != "poster":
+            changes.update(_withdrawn(row))
+        return await _sb_apply(
+            product_id, product, changes, action="delete",
+            summary=f"Removed the {kind} for {product.name}",
+            principal=principal, request=request,
+        )
+
     product = await _load_product(db, product_id)
     asset = await _load_asset(db, product_id)
     if asset is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no AR asset for this product.")
 
-    field = {"glb": "model_url", "usdz": "ios_model_url", "poster": "poster_url"}[kind]
     url = getattr(asset, field)
     if url:
         await get_storage().delete(url)
@@ -378,6 +475,31 @@ async def publish(
     result as you type, but a UI that merely discourages publishing a
     wrong-scale model is not a safeguard — it is a suggestion.
     """
+    if settings.DATA_BACKEND == "supabase":
+        product, row = await _sb_context(product_id)
+        result = ar_service.validate(admin_supabase.as_ar_asset(row), product)
+
+        if not result.ok:
+            await admin_supabase.update_ar_asset(
+                product_id, {"status": "failed", "validation_note": result.note}
+            )
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This model cannot be published yet. " + " ".join(result.problems),
+            )
+
+        return await _sb_apply(
+            product_id, product,
+            {
+                "status": "ready",
+                "validation_note": result.note,
+                "published_at": datetime.now(timezone.utc).isoformat(),
+            },
+            action="publish",
+            summary=f"Published AR for {product.name} (v{row.get('version')})",
+            principal=principal, request=request,
+        )
+
     product = await _load_product(db, product_id)
     asset = await _load_asset(db, product_id)
     if asset is None:
@@ -414,6 +536,16 @@ async def unpublish(
     principal: AdminPrincipal = Depends(require("ar.manage")),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.DATA_BACKEND == "supabase":
+        product, _row = await _sb_context(product_id)
+        return await _sb_apply(
+            product_id, product,
+            {"status": "deprecated", "published_at": None},
+            action="unpublish",
+            summary=f"Took AR off the storefront for {product.name}",
+            principal=principal, request=request,
+        )
+
     product = await _load_product(db, product_id)
     asset = await _load_asset(db, product_id)
     if asset is None:

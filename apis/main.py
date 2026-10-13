@@ -143,10 +143,12 @@ mimetypes.add_type("model/gltf-binary", ".glb")
 mimetypes.add_type("model/gltf+json", ".gltf")
 mimetypes.add_type("model/vnd.usdz+zip", ".usdz")
 
-if settings.STORAGE_PROVIDER == "local":
+if settings.STORAGE_PROVIDER == "local" or Path(settings.MEDIA_ROOT).is_dir():
     # Serving uploads from the API is a development convenience. In
     # production STORAGE_PROVIDER=s3 puts them on a CDN and this mount does
-    # not exist.
+    # not exist. A local stack switched to a CDN provider still has rows
+    # pointing at /media paths written earlier (the seeded dimension
+    # drawings), so the directory keeps being served while it exists.
     Path(settings.MEDIA_ROOT).mkdir(parents=True, exist_ok=True)
     app.mount(
         settings.MEDIA_URL_PREFIX,

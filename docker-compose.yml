@@ -64,8 +64,8 @@ services:
     build: ./apis
     # The image defaults to a production command - no reloader, and it honours
     # PORT because a hosting platform injects one. Development wants the
-    # opposite, so the reloader goes back on here rather than in the image.
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # opposite, so the reloader goes back on in the `command` below, which
+    # also seeds first.
     depends_on:
       db:
         condition: service_healthy
@@ -123,12 +123,22 @@ services:
       # WATCHPACK_POLLING was a webpack variable and Turbopack never saw it.
       NEXT_WATCH_POLL_MS: "300"
     # Webpack rather than the default Turbopack, and only here. Turbopack's
-    # file watcher does not work over this bind mount from a Windows host -
-    # it logs "watch error ... NotFound" at startup and then never rebuilds,
-    # so every edit needed the container restarting by hand and looked like
-    # the edit had not taken. Webpack polls instead, at the interval
-    # next.config.ts reads from NEXT_WATCH_POLL_MS. Running natively is
-    # unaffected and still uses Turbopack.
+    # file watcher does not see edits across a bind mount from a Windows host -
+    # it logs "watch error ... NotFound" at startup and then never rebuilds, so
+    # every edit needs the container restarting by hand and looks like the edit
+    # did not take. Webpack polls instead, at the interval next.config.ts reads
+    # from NEXT_WATCH_POLL_MS. Running natively is unaffected.
+    #
+    # RE-TESTED 2026-09-12, because `watchOptions.pollIntervalMs` in
+    # next.config.ts reads as though it fixed this for Turbopack: it does not.
+    # Editing a server-rendered heading and polling the page, webpack served
+    # the new text in about 4 seconds; Turbopack had not served it 48 seconds
+    # later. The pin stays.
+    #
+    # The cost is real and is NOT a bug to chase: webpack compiles each route
+    # on its first visit, so a cold page takes 2-3s here while the same page
+    # served by `next build` takes 5-300ms. Use docker-compose.demo.yml to
+    # show the site to anyone - see the header of that file.
     command: ["npm", "run", "dev", "--", "--webpack"]
     ports:
       # 3001 on the host: port 3000 is taken by another project on this

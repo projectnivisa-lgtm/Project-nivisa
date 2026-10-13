@@ -1,0 +1,122 @@
+# Run Nivisa from Docker Hub images, seeded from db/nivisa_demo.sql.
+#
+#   Run it (pulls the images):
+#     docker compose -f docker-compose.share.yml up -d
+#
+#   Build and publish the images (after `docker login`):
+#     export DOCKERHUB_USER=<your-docker-hub-username>
+#     docker compose -f docker-compose.share.yml build
+#     docker compose -f docker-compose.share.yml push api web admin
+#
+#   Storefront        http://localhost:3001   (first start builds it: ~1-2 min)
+#   Admin dashboard   http://localhost:5174
+#   API + docs        http://localhost:8000/docs
+#   Mail inbox        http://localhost:8025
+#
+# Everything runs locally against a throwaway Postgres; nothing here touches
+# the shared staging database, a payment gateway, a CDN or a mail relay.
+# Set DOCKERHUB_USER to pull from a different account.
+
+name: nivisa-share
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nivisa
+      POSTGRES_PASSWORD: nivisa
+      POSTGRES_DB: nivisa
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Schema + demo catalogue, loaded only when the volume is empty (first
+      # start). Customer, order and payment rows are not in the dump. To
+      # reload it: docker compose -f docker-compose.share.yml down -v
+      - ./db/nivisa_demo.sql:/docker-entrypoint-initdb.d/nivisa_demo.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nivisa -d nivisa"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  cache:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  mail:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  api:
+    build: ./apis
+    image: ${DOCKERHUB_USER:-CHANGE_ME}/nivisa-api:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    environment:
+      APP_ENV: local
+      DATA_BACKEND: postgres
+      DATABASE_URL: postgresql+asyncpg://nivisa:nivisa@db:5432/nivisa
+      REDIS_URL: redis://cache:6379/0
+      SECRET_KEY: local-development-only-not-a-production-secret
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:5174
+      STOREFRONT_URL: http://localhost:3001
+      PUBLIC_API_URL: http://localhost:8000
+      PAYMENT_PROVIDER: mock
+      STORAGE_PROVIDER: local
+      EMAIL_PROVIDER: smtp
+      SMS_PROVIDER: console
+      SMTP_HOST: mail
+      SMTP_PORT: 1025
+      MEDIA_ROOT: /data/media
+      SUPER_ADMIN_EMAIL: superadmin@nivisa.in
+      SUPER_ADMIN_PASSWORD: Nivisa@2026
+      SUPER_ADMIN_NAME: Super Admin
+    ports:
+      - "8000:8000"
+    volumes:
+      - media:/data/media
+    command: >
+      sh -c "python -m scripts.seed &&
+             uvicorn main:app --host 0.0.0.0 --port 8000"
+
+  web:
+    build: ./web
+    image: ${DOCKERHUB_USER:-CHANGE_ME}/nivisa-web:latest
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      INTERNAL_API_BASE_URL: http://api:8000
+      NEXT_PUBLIC_SITE_URL: http://localhost:3001
+      NEXT_PUBLIC_DEMO_CONTENT: "false"
+    # Production build at start, so pages answer in milliseconds rather than
+    # compiling on first visit the way `next dev` does.
+    command: ["sh", "-c", "npm run build && npm run start -- --port 3000 --hostname 0.0.0.0"]
+    ports:
+      - "3001:3000"
+
+  admin:
+    build: ./admin_dashboard
+    image: ${DOCKERHUB_USER:-CHANGE_ME}/nivisa-admin:latest
+    depends_on:
+      - api
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8000
+    ports:
+      - "5174:5174"
+
+volumes:
+  db-data:
+  media:

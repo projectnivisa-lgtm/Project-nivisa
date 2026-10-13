@@ -1,0 +1,31 @@
+# Demo mode: the storefront as a customer will actually experience it.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml \
+#                  -f docker-compose.demo.yml up -d web
+#
+# WHY THIS EXISTS
+#   `next dev` compiles each route the first time it is visited, so clicking
+#   into a page nobody has opened yet costs 2-3 seconds on this machine. That
+#   is the development server working as designed, not a slow website - the
+#   same pages served by `next build` answer in 5-300ms - but it is a terrible
+#   thing to demonstrate to a client, who reads it as "the site is slow".
+#
+#   Measured here, dev vs production, same machine and same data:
+#
+#     /                     348ms  ->  13ms
+#     /shop               2,339ms  ->  61ms
+#     /product/[slug]     3,337ms  ->  46ms
+#     /rooms/[slug]       2,072ms  ->  45ms
+#     /cart               1,393ms  ->   5ms
+#
+# THE TRADE
+#   No hot reload. The build runs at container start, so a code change means
+#   restarting this service (about a minute) rather than saving a file. Use it
+#   to SHOW the site; use the plain dev stack to build it.
+#
+#   The admin dashboard is left on Vite, which serves routes without a
+#   per-route compile and is already fast.
+services:
+  web:
+    command:
+      ["sh", "-c", "npm run build && npm run start -- --port 3000 --hostname 0.0.0.0"]

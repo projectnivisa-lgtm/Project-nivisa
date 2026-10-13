@@ -38,7 +38,7 @@ export function Login() {
         <h1 className="a-h1" style={{ marginBottom: 4 }}>
           Nivisa
         </h1>
-        <p className="a-sub" style={{ marginBottom: 24 }}>
+        <p className="a-sub" style={{ marginBottom: 28 }}>
           Sign in to the staff dashboard.
         </p>
 
@@ -87,7 +87,7 @@ export function Login() {
           </span>
         </label>
 
-        <button type="submit" className="a-btn a-btn--primary" disabled={busy} style={{ width: '100%' }}>
+        <button type="submit" className="a-btn a-btn--primary a-login__submit" disabled={busy}>
           {busy ? (
             <>
               <Loader2 size={15} className="a-spin" aria-hidden /> Signing in…

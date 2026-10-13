@@ -36,6 +36,15 @@
   --accent-blue: #3b82f6;
   --accent-red: #ef4444;
 
+  /* Scrollbars. Two sets, because the sidebar is a dark surface and the rest
+     of the app is a light one - one grey thumb cannot serve both. */
+  --scroll-thumb: #cbd2dc;
+  --scroll-thumb-hover: var(--nk-color-oxblood, #d31225);
+  --scroll-track: transparent;
+  --sidebar-scroll-thumb: rgba(179, 16, 60, 0.55);
+  --sidebar-scroll-thumb-hover: #b3103c;
+  --sidebar-scroll-track: rgba(255, 255, 255, 0.04);
+
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 
@@ -60,6 +69,7 @@
   --nk-space-2: 8px;
   --nk-space-3: 12px;
   --nk-space-4: 16px;
+  --nk-space-5: 20px;
   --nk-space-6: 24px;
   --nk-space-8: 32px;
 }
@@ -88,6 +98,12 @@
   --nk-color-paper-sunken: #2b3648;
   --nk-color-paper-line: #374151;
   --nk-color-ink-muted: #9ca3af;
+
+  --scroll-thumb: #3d4756;
+  --scroll-thumb-hover: #b3103c;
+  --sidebar-scroll-thumb: rgba(179, 16, 60, 0.6);
+  --sidebar-scroll-thumb-hover: #d31225;
+  --sidebar-scroll-track: rgba(255, 255, 255, 0.05);
 }
 
 /* Overriding old tokens with new ones for compatibility if needed */
@@ -166,6 +182,105 @@ body {
   padding: var(--nk-space-4) 0;
   flex: 1;
   overflow-y: auto;
+
+  /*
+   * The scrollbar stays - the menu genuinely runs past the fold on a laptop,
+   * and hiding the only sign of that is how people miss Settings. It is the
+   * DEFAULT one that was wrong here: a chunky light-grey Windows bar with its
+   * own white track, laid over an oxblood sidebar, reading as a seam between
+   * two panels rather than as a control.
+   *
+   * The two ways of styling one do not combine: where `scrollbar-width` is
+   * supported it WINS and the ::-webkit-scrollbar rules are dropped, and its
+   * `thin` is whatever the browser says it is - about 10px in Chromium, wider
+   * than the 6px asked for here. So each engine is given exactly one of them:
+   * the @supports test below is false in Chromium and Safari (they do support
+   * ::-webkit-scrollbar), which leaves those on the pseudo-element rules, and
+   * true in Firefox, which has nothing else.
+   */
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .a-side__nav {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sidebar-scroll-thumb) var(--sidebar-scroll-track);
+  }
+}
+
+.a-side__nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.a-side__nav::-webkit-scrollbar-track {
+  background: var(--sidebar-scroll-track);
+  /* Inset by the same 4px the active link's border-left occupies, so the two
+     vertical accents on this edge line up instead of nearly lining up. */
+  margin: var(--nk-space-2) 0;
+  border-radius: 999px;
+}
+
+.a-side__nav::-webkit-scrollbar-thumb {
+  background: var(--sidebar-scroll-thumb);
+  border-radius: 999px;
+}
+
+.a-side__nav:hover::-webkit-scrollbar-thumb,
+.a-side__nav::-webkit-scrollbar-thumb:hover {
+  background: var(--sidebar-scroll-thumb-hover);
+}
+
+/*
+ * Everywhere else: the content area, tables, dialogs, any pane that scrolls.
+ * Same shape as the sidebar's - 6px, fully rounded, no track chrome - in the
+ * light surface's colours, so the app has ONE scrollbar rather than one per
+ * component. The oxblood on hover is the same accent the sidebar uses, which
+ * is what ties the two together.
+ */
+@supports not selector(::-webkit-scrollbar) {
+  .a-main,
+  .a-side__submenu,
+  .a-table-wrap,
+  .a-dialog--wide {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+  }
+}
+
+.a-main::-webkit-scrollbar,
+.a-side__submenu::-webkit-scrollbar,
+.a-table-wrap::-webkit-scrollbar,
+.a-dialog--wide::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.a-main::-webkit-scrollbar-track,
+.a-side__submenu::-webkit-scrollbar-track,
+.a-table-wrap::-webkit-scrollbar-track,
+.a-dialog--wide::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+}
+
+.a-main::-webkit-scrollbar-thumb,
+.a-side__submenu::-webkit-scrollbar-thumb,
+.a-table-wrap::-webkit-scrollbar-thumb,
+.a-dialog--wide::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+}
+
+.a-main::-webkit-scrollbar-thumb:hover,
+.a-side__submenu::-webkit-scrollbar-thumb:hover,
+.a-table-wrap::-webkit-scrollbar-thumb:hover,
+.a-dialog--wide::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+/* Where a vertical and a horizontal bar meet, the default is a grey square
+   with a border. Nothing needs to be drawn there. */
+.a-main::-webkit-scrollbar-corner,
+.a-table-wrap::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .a-side__link {
@@ -967,13 +1082,24 @@ body {
 }
 
 .a-login__field {
-  margin-bottom: var(--nk-space-4);
+  display: block;
+  margin-bottom: var(--nk-space-5);
 }
 
-.a-login__field label {
+/*
+ * The field IS the <label>; its caption is the first <span> inside it.
+ *
+ * This used to read `.a-login__field label`, which matched nothing - a label
+ * inside a label - so the caption inherited no weight and, more visibly, no
+ * margin: "Email" sat directly on top of its own box with the two reading as
+ * one smudged block.
+ */
+.a-login__field > span:first-child {
   display: block;
   margin-bottom: var(--nk-space-2);
+  font-size: 0.8125rem;
   font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--text-main);
 }
 
@@ -993,8 +1119,10 @@ body {
 .a-login__input-wrap input {
   width: 100%;
   box-sizing: border-box;
-  padding: 10px 12px 10px 40px !important;
-  min-height: 40px;
+  /* 40px of left inset clears the leading icon; the same on the right clears
+     the reveal toggle, which the password value was otherwise running under. */
+  padding: 12px 40px 12px 40px !important;
+  min-height: 46px;
   background: var(--dashboard-bg);
   border: 1px solid var(--card-border);
   color: var(--text-main);
@@ -1006,6 +1134,19 @@ body {
 .a-login__input-wrap input:focus {
   border-color: var(--nk-color-oxblood);
   box-shadow: 0 0 0 3px rgba(211, 18, 37, 0.08);
+}
+
+/*
+ * The submit button is a different KIND of thing from the boxes above it, and
+ * the gap is what says so. At the fields' own spacing it read as a third
+ * input - one you happened to be able to press.
+ */
+.a-login__submit {
+  width: 100%;
+  margin-top: var(--nk-space-6);
+  min-height: 46px;
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 /* ---------- Redesigned Sidebar Submenu links ---------- */

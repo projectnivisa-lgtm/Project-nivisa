@@ -68,8 +68,8 @@ export function FilterControls({
             {categories.map((category) => (
               <li key={category.id}>
                 <FilterButton
-                  isActive={filters.categoryId === category.id}
-                  onClick={() => apply({ c: category.id })}
+                  isActive={filters.categoryId === category.slug}
+                  onClick={() => apply({ c: category.slug })}
                   count={category.productCount || undefined}
                 >
                   {category.name}

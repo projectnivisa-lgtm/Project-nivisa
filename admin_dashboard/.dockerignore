@@ -2,3 +2,6 @@ node_modules/
 dist/
 .git/
 *.tsbuildinfo
+# Local env files stay on this machine; compose supplies the values.
+.env*
+!.env.example

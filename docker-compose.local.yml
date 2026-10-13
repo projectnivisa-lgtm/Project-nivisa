@@ -1,0 +1,29 @@
+# Desktop-only local run: the base stack, on localhost, against the disposable
+# Postgres container.
+#
+# WHY IT EXISTS
+#   docker-compose.override.yml is the PHONE setup - a production web build
+#   bound to this machine's LAN address, which takes minutes to build and is
+#   not what you want when you are just looking at the UI in a browser here.
+#   Compose loads that override automatically, so this file is used the
+#   explicit way instead, which leaves it out:
+#
+#     docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+#
+#   The one thing it must carry over from the phone override: apis/.env says
+#   DATA_BACKEND=supabase and points at the SHARED staging database. Without
+#   this pin, a "local" click would edit what the client sees.
+services:
+  api:
+    environment:
+      DATA_BACKEND: postgres
+
+  db:
+    # !override replaces the base list rather than appending to it - compose
+    # merges port lists, so without it the container would still try to claim
+    # 5433 as well.
+    ports: !override
+      # 5433 belongs to another project's Postgres on this machine. This port
+      # exists only so a GUI client can connect; the API reaches the database
+      # over the compose network, where nothing changes.
+      - "5434:5432"

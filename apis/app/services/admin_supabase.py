@@ -21,6 +21,7 @@ COUNTS ON SMALL TABLES
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -36,6 +37,8 @@ from app.schemas.commerce import CouponOut, ShippingRateOut
 from app.schemas.common import Page
 from app.schemas.content import BannerOut, HomepageSectionOut, PageOut, SettingOut
 from app.schemas.identity import RoleOut
+
+logger = logging.getLogger(__name__)
 
 # Products in any state but archived count towards a category's total, which
 # is what the taxonomy screen shows: a draft product still occupies the
@@ -462,7 +465,74 @@ async def create_ar_asset(product_id: int) -> dict[str, Any]:
     edit" branch. Nothing is published by existing.
     """
     now = datetime.now(timezone.utc).isoformat()
+    # scale_mode, placement and version are NOT NULL in the table. Their
+    # defaults live on the SQLAlchemy model, which applies them in Python and
+    # so never runs on this path - PostgREST inserts exactly what it is given,
+    # and omitting them made every first open of the AR panel a 500.
     return await supabase.insert("product_ar_assets", {
         "product_id": product_id, "status": "unavailable",
+        "scale_mode": "fixed", "placement": "floor", "version": 1,
         "created_at": now, "updated_at": now,
     })
+
+
+async def update_ar_asset(product_id: int, changes: dict[str, Any]) -> dict[str, Any]:
+    """Patch an asset row, creating it first if the product has none.
+
+    Mirrors what the SQLAlchemy path does by mutating a mapped object: the
+    caller passes only the fields it means to change, so a settings save
+    cannot blank an uploaded model URL it never mentioned.
+    """
+    row = await ar_asset(product_id)
+    if row is None:
+        row = await create_ar_asset(product_id)
+    changes = {**changes, "updated_at": datetime.now(timezone.utc).isoformat()}
+    rows = await supabase.patch(
+        "product_ar_assets", changes, product_id=f"eq.{product_id}"
+    )
+    return rows[0] if rows else {**row, **changes}
+
+
+async def record_audit(
+    *,
+    action: str,
+    entity: str,
+    entity_id: str | int | None = None,
+    summary: str | None = None,
+    changes: dict[str, Any] | None = None,
+    principal: Any | None = None,
+    request: Any | None = None,
+) -> None:
+    """The audit trail, for the PostgREST path.
+
+    app.core.audit writes through the SQLAlchemy session, which this backend
+    does not have. Same row, same columns, one HTTP write - and swallowed the
+    same way, because a failure to record what happened must not fail the
+    thing that happened.
+    """
+    try:
+        user = getattr(principal, "user", None)
+        ip = None
+        agent = None
+        if request is not None:
+            client = getattr(request, "client", None)
+            ip = getattr(client, "host", None)
+            agent = (request.headers.get("user-agent") or "")[:300] or None
+        now = datetime.now(timezone.utc).isoformat()
+        await supabase.insert("audit_logs", {
+            "actor_id": getattr(user, "id", None),
+            "actor_name": getattr(user, "name", None),
+            "actor_email": getattr(user, "email", None),
+            "action": action,
+            "entity": entity,
+            "entity_id": str(entity_id) if entity_id is not None else None,
+            "summary": summary,
+            "changes": changes or None,
+            "ip_address": ip,
+            "user_agent": agent,
+            "status": "success",
+            "created_at": now,
+            "updated_at": now,
+        })
+    except Exception:
+        logger.exception("Failed to record audit entry for %s %s", action, entity)

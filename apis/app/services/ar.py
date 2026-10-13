@@ -126,5 +126,11 @@ def to_public(asset: ProductArAsset | None) -> dict | None:
         "scale_mode": asset.scale_mode,
         "placement": asset.placement,
         "version": asset.version,
-        "updated_at": asset.updated_at.isoformat() if asset.updated_at else None,
+        # A datetime from SQLAlchemy, already an ISO string from PostgREST.
+        # Both reach here, so neither is assumed.
+        "updated_at": (
+            asset.updated_at.isoformat()
+            if hasattr(asset.updated_at, "isoformat")
+            else asset.updated_at or None
+        ),
     }
